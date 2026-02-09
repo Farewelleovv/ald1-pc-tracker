@@ -49,6 +49,9 @@ export default function Home() {
     {}
   );
 
+  // Hint banner (once per device)
+  const [showHint, setShowHint] = useState(false);
+
   // ----------------------------
   // AUTH SESSION
   // ----------------------------
@@ -65,6 +68,27 @@ export default function Home() {
       sub.subscription.unsubscribe();
     };
   }, []);
+
+  // ----------------------------
+  // HINT (ONCE PER DEVICE)
+  // ----------------------------
+  useEffect(() => {
+    try {
+      const dismissed = localStorage.getItem("ald1_hint_dismissed");
+      if (!dismissed) setShowHint(true);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const dismissHint = () => {
+    setShowHint(false);
+    try {
+      localStorage.setItem("ald1_hint_dismissed", "1");
+    } catch {
+      // ignore
+    }
+  };
 
   // ----------------------------
   // FETCH PHOTOCARDS (PUBLIC)
@@ -232,10 +256,10 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#F7F2EB] text-[#4A3F35] px-3 py-4">
       {/* Header */}
-      <header className="mb-6 flex items-center justify-between">
+      <header className="mb-4 flex items-center justify-between">
         <div className="flex-1 text-center">
-          <h1 className="text-2xl font-semibold">Alpha Drive One PC Tracker</h1>
-          <p className="text-sm opacity-70">Track your photocard collection</p>
+          <h1 className="text-2xl font-semibold">Alpha Drive One Collection Tracker</h1>
+          <p className="text-sm opacity-70">Photockard tracker by Farewelleovv</p>
         </div>
 
         <div className="ml-2">
@@ -256,6 +280,24 @@ export default function Home() {
           )}
         </div>
       </header>
+
+      {/* Hint */}
+      {showHint && (
+        <div className="mb-4 rounded-xl bg-[#EFE6DA] p-3 text-sm">
+          <div className="flex items-start justify-between gap-3">
+            <p className="leading-snug">
+              Tip: <b>Tap</b> a card to change status. <b>Double tap</b> to see the
+              PC name.
+            </p>
+            <button
+              onClick={dismissHint}
+              className="rounded-full bg-[#C8B6A6] px-3 py-1 text-xs font-medium hover:opacity-90"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Member selector */}
       <section className="mb-4 overflow-x-auto">
@@ -350,7 +392,7 @@ export default function Home() {
       {loading ? (
         <p className="text-center text-sm opacity-60">Loading photocards…</p>
       ) : (
-        <section className="grid grid-cols-2 md:grid-cols-8 gap-2">
+        <section className="grid grid-cols-4 md:grid-cols-8 gap-2">
           {visiblePCs.map((pc) => {
             const status = pcStatus[pc.id];
             const showMobileName = showNameFor === pc.id;
@@ -374,7 +416,9 @@ export default function Home() {
                 )}
 
                 {/* Tint for null / prio / otw (disappears once owned) */}
-                {status !== "owned" && <div className="absolute inset-0 bg-black/30" />}
+                {status !== "owned" && (
+                  <div className="absolute inset-0 bg-black/30" />
+                )}
 
                 {/* Status badge */}
                 {status && (
