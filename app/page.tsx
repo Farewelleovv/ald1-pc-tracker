@@ -417,7 +417,7 @@ export default function Home() {
 
                 {/* Tint for null / prio / otw (disappears once owned) */}
                 {status !== "owned" && (
-                  <div className="absolute inset-0 bg-brown/35" />
+                  <div className="absolute inset-0 bg-black/30" />
                 )}
 
                 {/* Status badge */}
