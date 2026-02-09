@@ -42,12 +42,12 @@ export default function Home() {
   const [selectedEra, setSelectedEra] = useState("All");
   const [selectedType, setSelectedType] = useState("All");
 
-  // Mobile long-press PC name
+  // Mobile: double-tap show PC name
   const [showNameFor, setShowNameFor] = useState<number | null>(null);
-  const longPressTimerRef = useRef<Record<number, ReturnType<typeof setTimeout>>>(
+  const lastTapRef = useRef<Record<number, number>>({});
+  const singleTapTimerRef = useRef<Record<number, ReturnType<typeof setTimeout>>>(
     {}
   );
-  const suppressClickRef = useRef<Record<number, boolean>>({});
 
   // ----------------------------
   // AUTH SESSION
@@ -119,7 +119,6 @@ export default function Home() {
   // ----------------------------
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    // reset local UI
     setPcStatus({});
     setUserId(null);
     router.push("/login");
@@ -186,30 +185,35 @@ export default function Home() {
   };
 
   // ----------------------------
-  // MOBILE LONG PRESS (PC NAME)
+  // MOBILE: SINGLE TAP cycles, DOUBLE TAP shows name
   // ----------------------------
-  const startLongPress = (pcId: number, pointerType: string) => {
-    if (pointerType !== "touch") return;
+  const handleCardTap = (pcId: number) => {
+    const now = Date.now();
+    const last = lastTapRef.current[pcId] || 0;
 
-    // reset for this card
-    suppressClickRef.current[pcId] = false;
+    // DOUBLE TAP: show name only
+    if (now - last < 300) {
+      // cancel pending single-tap action
+      const t = singleTapTimerRef.current[pcId];
+      if (t) clearTimeout(t);
 
-    // start timer
-    longPressTimerRef.current[pcId] = setTimeout(() => {
-      suppressClickRef.current[pcId] = true; // suppress the click that follows touch
+      lastTapRef.current[pcId] = 0;
+
       setShowNameFor(pcId);
-
-      // auto-hide a bit later so it doesn't get stuck
       setTimeout(() => {
         setShowNameFor((cur) => (cur === pcId ? null : cur));
       }, 1200);
-    }, 500);
-  };
 
-  const endLongPress = (pcId: number) => {
-    const t = longPressTimerRef.current[pcId];
-    if (t) clearTimeout(t);
-    delete longPressTimerRef.current[pcId];
+      return;
+    }
+
+    // FIRST TAP: wait briefly to see if a second tap comes
+    lastTapRef.current[pcId] = now;
+
+    singleTapTimerRef.current[pcId] = setTimeout(() => {
+      cycleStatus(pcId);
+      lastTapRef.current[pcId] = 0;
+    }, 300);
   };
 
   // ----------------------------
@@ -238,14 +242,14 @@ export default function Home() {
           {userId ? (
             <button
               onClick={handleLogout}
-              className="text-xs opacity-60 hover:opacity-100"
+              className="rounded-full bg-[#C8B6A6] px-4 py-2 text-sm font-medium text-[#4A3F35] shadow-sm hover:opacity-90"
             >
               Log out
             </button>
           ) : (
             <button
               onClick={handleLogin}
-              className="text-xs opacity-60 hover:opacity-100"
+              className="rounded-full bg-[#C8B6A6] px-4 py-2 text-sm font-medium text-[#4A3F35] shadow-sm hover:opacity-90"
             >
               Log in
             </button>
@@ -355,17 +359,7 @@ export default function Home() {
               <button
                 key={pc.id}
                 className="group relative aspect-[2.8/4] rounded-lg bg-[#EFE6DA] overflow-hidden"
-                onPointerDown={(e) => startLongPress(pc.id, e.pointerType)}
-                onPointerUp={() => endLongPress(pc.id)}
-                onPointerCancel={() => endLongPress(pc.id)}
-                onClick={() => {
-                  // If long-press fired on mobile, don't cycle
-                  if (suppressClickRef.current[pc.id]) {
-                    suppressClickRef.current[pc.id] = false;
-                    return;
-                  }
-                  cycleStatus(pc.id);
-                }}
+                onClick={() => handleCardTap(pc.id)}
               >
                 {pc.image_url ? (
                   <img
@@ -380,9 +374,7 @@ export default function Home() {
                 )}
 
                 {/* Tint for null / prio / otw (disappears once owned) */}
-                {status !== "owned" && (
-                  <div className="absolute inset-0 bg-black/30" />
-                )}
+                {status !== "owned" && <div className="absolute inset-0 bg-black/30" />}
 
                 {/* Status badge */}
                 {status && (
@@ -399,14 +391,12 @@ export default function Home() {
                   </span>
                 )}
 
-                {/* PC name: Desktop hover + Mobile long press */}
+                {/* PC name: Desktop hover + Mobile double-tap */}
                 {pc.pc_name && (
                   <div
                     className={[
                       "absolute bottom-0 w-full bg-black/60 px-1 py-0.5 text-[10px] text-white text-center",
-                      // Desktop: show on hover only
                       "md:opacity-0 md:group-hover:opacity-100 md:transition-opacity",
-                      // Mobile: only show when long-pressed
                       showMobileName ? "opacity-100" : "opacity-0 md:opacity-0",
                     ].join(" ")}
                   >
