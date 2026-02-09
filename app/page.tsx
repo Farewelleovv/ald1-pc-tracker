@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 const MEMBERS = [
@@ -29,6 +30,8 @@ type Photocard = {
 const STATUS_ORDER: (Status | null)[] = [null, "prio", "otw", "owned"];
 
 export default function Home() {
+  const router = useRouter();
+
   const [userId, setUserId] = useState<string | null>(null);
 
   const [pcs, setPcs] = useState<Photocard[]>([]);
@@ -39,63 +42,105 @@ export default function Home() {
   const [selectedEra, setSelectedEra] = useState("All");
   const [selectedType, setSelectedType] = useState("All");
 
+  // Mobile long-press PC name
+  const [showNameFor, setShowNameFor] = useState<number | null>(null);
+  const longPressTimerRef = useRef<Record<number, ReturnType<typeof setTimeout>>>(
+    {}
+  );
+  const suppressClickRef = useRef<Record<number, boolean>>({});
+
   // ----------------------------
-  // FETCH AUTH + DATA
+  // AUTH SESSION
   // ----------------------------
   useEffect(() => {
-    const fetchData = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    supabase.auth.getSession().then(({ data }) => {
+      setUserId(data.session?.user.id ?? null);
+    });
 
-      if (!session?.user) {
-        setLoading(false);
-        return;
-      }
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user.id ?? null);
+    });
 
-      const uid = session.user.id;
-      setUserId(uid);
+    return () => {
+      sub.subscription.unsubscribe();
+    };
+  }, []);
 
-      const { data: pcsData, error: pcsError } = await supabase
+  // ----------------------------
+  // FETCH PHOTOCARDS (PUBLIC)
+  // ----------------------------
+  useEffect(() => {
+    const fetchPCs = async () => {
+      const { data, error } = await supabase
         .from("photocards")
         .select("*")
         .order("order", { ascending: true });
 
-      if (pcsError) console.error(pcsError);
-      if (pcsData) setPcs(pcsData);
-
-      const { data: statusData, error: statusError } = await supabase
-        .from("user_pcs")
-        .select("pc_id, status")
-        .eq("user_id", uid);
-
-      if (statusError) console.error(statusError);
-
-      if (statusData) {
-        const map: Record<number, Status> = {};
-        statusData.forEach((row) => {
-          map[row.pc_id] = row.status as Status;
-        });
-        setPcStatus(map);
-      }
+      if (error) console.error("Photocards fetch error:", error);
+      if (data) setPcs(data);
 
       setLoading(false);
     };
 
-    fetchData();
+    fetchPCs();
   }, []);
+
+  // ----------------------------
+  // FETCH STATUSES (ONLY IF LOGGED IN)
+  // ----------------------------
+  useEffect(() => {
+    if (!userId) {
+      setPcStatus({});
+      return;
+    }
+
+    const fetchStatuses = async () => {
+      const { data, error } = await supabase
+        .from("user_pcs")
+        .select("pc_id, status")
+        .eq("user_id", userId);
+
+      if (error) console.error("Status fetch error:", error);
+
+      if (data) {
+        const map: Record<number, Status> = {};
+        data.forEach((row) => {
+          map[row.pc_id] = row.status as Status;
+        });
+        setPcStatus(map);
+      }
+    };
+
+    fetchStatuses();
+  }, [userId]);
+
+  // ----------------------------
+  // LOGIN / LOGOUT
+  // ----------------------------
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    // reset local UI
+    setPcStatus({});
+    setUserId(null);
+    router.push("/login");
+  };
+
+  const handleLogin = () => {
+    router.push("/login");
+  };
 
   // ----------------------------
   // STATUS CYCLING
   // ----------------------------
   const cycleStatus = async (pcId: number) => {
-    if (!userId) return;
+    if (!userId) {
+      router.push("/login");
+      return;
+    }
 
     const current = pcStatus[pcId] ?? null;
     const next =
-      STATUS_ORDER[
-        (STATUS_ORDER.indexOf(current) + 1) % STATUS_ORDER.length
-      ];
+      STATUS_ORDER[(STATUS_ORDER.indexOf(current) + 1) % STATUS_ORDER.length];
 
     // DELETE when cycling back to null
     if (next === null) {
@@ -124,7 +169,7 @@ export default function Home() {
       .eq("pc_id", pcId)
       .select();
 
-    if (updateError) console.error(updateError);
+    if (updateError) console.error("Update error:", updateError);
 
     // INSERT fallback
     if (!updated || updated.length === 0) {
@@ -134,23 +179,44 @@ export default function Home() {
         status: next,
       });
 
-      if (insertError) console.error(insertError);
+      if (insertError) console.error("Insert error:", insertError);
     }
 
-    setPcStatus((prev) => ({
-      ...prev,
-      [pcId]: next,
-    }));
+    setPcStatus((prev) => ({ ...prev, [pcId]: next }));
+  };
+
+  // ----------------------------
+  // MOBILE LONG PRESS (PC NAME)
+  // ----------------------------
+  const startLongPress = (pcId: number, pointerType: string) => {
+    if (pointerType !== "touch") return;
+
+    // reset for this card
+    suppressClickRef.current[pcId] = false;
+
+    // start timer
+    longPressTimerRef.current[pcId] = setTimeout(() => {
+      suppressClickRef.current[pcId] = true; // suppress the click that follows touch
+      setShowNameFor(pcId);
+
+      // auto-hide a bit later so it doesn't get stuck
+      setTimeout(() => {
+        setShowNameFor((cur) => (cur === pcId ? null : cur));
+      }, 1200);
+    }, 500);
+  };
+
+  const endLongPress = (pcId: number) => {
+    const t = longPressTimerRef.current[pcId];
+    if (t) clearTimeout(t);
+    delete longPressTimerRef.current[pcId];
   };
 
   // ----------------------------
   // FILTERING
   // ----------------------------
   const visiblePCs = pcs.filter((pc) => {
-    if (
-      selectedMembers.length > 0 &&
-      !selectedMembers.includes(pc.member)
-    )
+    if (selectedMembers.length > 0 && !selectedMembers.includes(pc.member))
       return false;
 
     if (selectedEra !== "All" && pc.era !== selectedEra) return false;
@@ -162,13 +228,29 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#F7F2EB] text-[#4A3F35] px-3 py-4">
       {/* Header */}
-      <header className="mb-6 text-center">
-        <h1 className="text-2xl font-semibold">
-          Alpha Drive One PC Tracker
-        </h1>
-        <p className="text-sm opacity-70">
-          Track your photocard collection
-        </p>
+      <header className="mb-6 flex items-center justify-between">
+        <div className="flex-1 text-center">
+          <h1 className="text-2xl font-semibold">Alpha Drive One PC Tracker</h1>
+          <p className="text-sm opacity-70">Track your photocard collection</p>
+        </div>
+
+        <div className="ml-2">
+          {userId ? (
+            <button
+              onClick={handleLogout}
+              className="text-xs opacity-60 hover:opacity-100"
+            >
+              Log out
+            </button>
+          ) : (
+            <button
+              onClick={handleLogin}
+              className="text-xs opacity-60 hover:opacity-100"
+            >
+              Log in
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Member selector */}
@@ -177,9 +259,7 @@ export default function Home() {
           <button
             onClick={() => setSelectedMembers([])}
             className={`rounded-full px-4 py-2 text-sm ${
-              selectedMembers.length === 0
-                ? "bg-[#C8B6A6]"
-                : "bg-[#EFE6DA]"
+              selectedMembers.length === 0 ? "bg-[#C8B6A6]" : "bg-[#EFE6DA]"
             }`}
           >
             All
@@ -264,19 +344,28 @@ export default function Home() {
 
       {/* Grid */}
       {loading ? (
-        <p className="text-center text-sm opacity-60">
-          Loading photocards…
-        </p>
+        <p className="text-center text-sm opacity-60">Loading photocards…</p>
       ) : (
         <section className="grid grid-cols-2 md:grid-cols-8 gap-2">
           {visiblePCs.map((pc) => {
             const status = pcStatus[pc.id];
+            const showMobileName = showNameFor === pc.id;
 
             return (
               <button
                 key={pc.id}
-                onClick={() => cycleStatus(pc.id)}
-                className="relative aspect-[2.8/4] rounded-lg bg-[#EFE6DA] overflow-hidden"
+                className="group relative aspect-[2.8/4] rounded-lg bg-[#EFE6DA] overflow-hidden"
+                onPointerDown={(e) => startLongPress(pc.id, e.pointerType)}
+                onPointerUp={() => endLongPress(pc.id)}
+                onPointerCancel={() => endLongPress(pc.id)}
+                onClick={() => {
+                  // If long-press fired on mobile, don't cycle
+                  if (suppressClickRef.current[pc.id]) {
+                    suppressClickRef.current[pc.id] = false;
+                    return;
+                  }
+                  cycleStatus(pc.id);
+                }}
               >
                 {pc.image_url ? (
                   <img
@@ -290,11 +379,12 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Tint for null / prio / otw */}
+                {/* Tint for null / prio / otw (disappears once owned) */}
                 {status !== "owned" && (
                   <div className="absolute inset-0 bg-black/30" />
                 )}
 
+                {/* Status badge */}
                 {status && (
                   <span
                     className={`absolute top-1 right-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white ${
@@ -309,9 +399,17 @@ export default function Home() {
                   </span>
                 )}
 
-                {/* PC name (hover / tap-safe) */}
+                {/* PC name: Desktop hover + Mobile long press */}
                 {pc.pc_name && (
-                  <div className="absolute bottom-0 w-full bg-black/60 text-white text-[10px] px-1 py-0.5 text-center">
+                  <div
+                    className={[
+                      "absolute bottom-0 w-full bg-black/60 px-1 py-0.5 text-[10px] text-white text-center",
+                      // Desktop: show on hover only
+                      "md:opacity-0 md:group-hover:opacity-100 md:transition-opacity",
+                      // Mobile: only show when long-pressed
+                      showMobileName ? "opacity-100" : "opacity-0 md:opacity-0",
+                    ].join(" ")}
+                  >
                     {pc.pc_name}
                   </div>
                 )}
