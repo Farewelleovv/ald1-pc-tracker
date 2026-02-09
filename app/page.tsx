@@ -259,7 +259,7 @@ export default function Home() {
       <header className="mb-4 flex items-center justify-between">
         <div className="flex-1 text-center">
           <h1 className="text-2xl font-semibold">Alpha Drive One Collection Tracker</h1>
-          <p className="text-sm opacity-70">Photockard tracker by Farewelleovv</p>
+          <p className="text-sm opacity-70">Photocard tracker by Farewelleovv</p>
         </div>
 
         <div className="ml-2">
@@ -417,7 +417,7 @@ export default function Home() {
 
                 {/* Tint for null / prio / otw (disappears once owned) */}
                 {status !== "owned" && (
-                  <div className="absolute inset-0 bg-black/30" />
+                  <div className="absolute inset-0 bg-brown/35" />
                 )}
 
                 {/* Status badge */}
