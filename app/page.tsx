@@ -33,6 +33,7 @@ export default function Home() {
   const router = useRouter();
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   const [pcs, setPcs] = useState<Photocard[]>([]);
   const [pcStatus, setPcStatus] = useState<Record<number, Status>>({});
@@ -41,6 +42,7 @@ export default function Home() {
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [selectedEra, setSelectedEra] = useState("All");
   const [selectedType, setSelectedType] = useState("All");
+  const [selectedStatus, setSelectedStatus] = useState("All");
 
   // Mobile: double-tap show PC name
   const [showNameFor, setShowNameFor] = useState<number | null>(null);
@@ -52,20 +54,47 @@ export default function Home() {
   // Hint banner (once per device)
   const [showHint, setShowHint] = useState(false);
 
+  // Menu
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
   // ----------------------------
   // AUTH SESSION
   // ----------------------------
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      setUserId(data.session?.user.id ?? null);
+      const u = data.session?.user ?? null;
+      setUserId(u?.id ?? null);
+      setUserEmail(u?.email ?? null);
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUserId(session?.user.id ?? null);
+      const u = session?.user ?? null;
+      setUserId(u?.id ?? null);
+      setUserEmail(u?.email ?? null);
     });
 
     return () => {
       sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  // ----------------------------
+  // MENU: CLOSE ON OUTSIDE CLICK
+  // ----------------------------
+  useEffect(() => {
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      if (!menuRef.current) return;
+      if (menuRef.current.contains(e.target as Node)) return;
+      setMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown);
+
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
     };
   }, []);
 
@@ -98,7 +127,8 @@ export default function Home() {
       const { data, error } = await supabase
         .from("photocards")
         .select("*")
-        .order("order", { ascending: true });
+        .order("sort_order", { ascending: true })
+        .range(0, 9999);
 
       if (error) console.error("Photocards fetch error:", error);
       if (data) setPcs(data);
@@ -145,10 +175,13 @@ export default function Home() {
     await supabase.auth.signOut();
     setPcStatus({});
     setUserId(null);
+    setUserEmail(null);
+    setMenuOpen(false);
     router.push("/login");
   };
 
   const handleLogin = () => {
+    setMenuOpen(false);
     router.push("/login");
   };
 
@@ -241,6 +274,75 @@ export default function Home() {
   };
 
   // ----------------------------
+  // RESET FILTERS (BUTTON ON FILTER ROW)
+  // ----------------------------
+  const resetFilters = () => {
+    setSelectedMembers([]);
+    setSelectedEra("All");
+    setSelectedType("All");
+    setSelectedStatus("All");
+
+    if (typeof window !== "undefined") {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  };
+
+  // ----------------------------
+  // SHAREABLE LINK + PRINT-TO-PDF
+  // ----------------------------
+  const buildShareUrl = () => {
+    const params = new URLSearchParams();
+
+    if (selectedMembers.length > 0) params.set("members", selectedMembers.join(","));
+    if (selectedEra !== "All") params.set("era", selectedEra);
+    if (selectedType !== "All") params.set("type", selectedType);
+    if (selectedStatus !== "All") params.set("status", selectedStatus);
+
+    const base =
+      typeof window !== "undefined"
+        ? window.location.origin + window.location.pathname
+        : "";
+
+    const qs = params.toString();
+    return qs ? `${base}?${qs}` : base;
+  };
+
+  const copyShareLink = async () => {
+    try {
+      const url = buildShareUrl();
+      await navigator.clipboard.writeText(url);
+      alert("Link copied!");
+      setMenuOpen(false);
+    } catch {
+      alert("Could not copy. Try manually copying the URL from the address bar.");
+    }
+  };
+
+  const downloadPDF = () => {
+    setMenuOpen(false);
+    window.print();
+  };
+
+  // ----------------------------
+  // APPLY FILTERS FROM URL ON LOAD
+  // ----------------------------
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+
+    const members = params.get("members");
+    const era = params.get("era");
+    const type = params.get("type");
+    const status = params.get("status");
+
+    if (members) setSelectedMembers(members.split(",").filter(Boolean));
+    if (era) setSelectedEra(era);
+    if (type) setSelectedType(type);
+    if (status) setSelectedStatus(status);
+  }, []);
+
+  // ----------------------------
   // FILTERING
   // ----------------------------
   const visiblePCs = pcs.filter((pc) => {
@@ -250,40 +352,115 @@ export default function Home() {
     if (selectedEra !== "All" && pc.era !== selectedEra) return false;
     if (selectedType !== "All" && pc.type !== selectedType) return false;
 
+    if (selectedStatus !== "All") {
+      const status = pcStatus[pc.id] ?? null;
+
+      if (selectedStatus === "Missing") {
+        if (status !== null) return false;
+      } else {
+        if (status !== (selectedStatus.toLowerCase() as Status)) return false;
+      }
+    }
+
     return true;
   });
+
+  const activeFiltersLabel = (() => {
+    const parts: string[] = [];
+
+    if (selectedMembers.length > 0) parts.push(`Members: ${selectedMembers.join(", ")}`);
+    if (selectedEra !== "All") parts.push(`Era: ${selectedEra}`);
+    if (selectedType !== "All") parts.push(`Type: ${selectedType}`);
+    if (selectedStatus !== "All") parts.push(`Status: ${selectedStatus}`);
+
+    if (parts.length === 0) return "No filters applied";
+    return parts.join(" • ");
+  })();
 
   return (
     <main className="min-h-screen bg-[#F7F2EB] text-[#4A3F35] px-3 py-4">
       {/* Header */}
-      <header className="mb-4 flex items-center justify-between">
+      <header className="mb-4 flex items-center justify-between print:hidden">
         <div className="flex-1 text-center">
-          <h1 className="text-2xl font-semibold">Alpha Drive One Collection Tracker</h1>
+          <h1 className="text-2xl font-semibold">
+            Alpha Drive One Collection Tracker
+          </h1>
           <p className="text-sm opacity-70">Photocard tracker by Farewelleovv</p>
         </div>
 
-        <div className="ml-2">
-          {userId ? (
-            <button
-              onClick={handleLogout}
-              className="rounded-full bg-[#C8B6A6] px-4 py-2 text-sm font-medium text-[#4A3F35] shadow-sm hover:opacity-90"
-            >
-              Log out
-            </button>
-          ) : (
-            <button
-              onClick={handleLogin}
-              className="rounded-full bg-[#C8B6A6] px-4 py-2 text-sm font-medium text-[#4A3F35] shadow-sm hover:opacity-90"
-            >
-              Log in
-            </button>
+        {/* Menu */}
+        <div className="ml-2 relative" ref={menuRef}>
+          <button
+            onClick={() => setMenuOpen((v) => !v)}
+            className="rounded-full bg-[#C8B6A6] px-4 py-2 text-sm font-medium text-[#4A3F35] shadow-sm hover:opacity-90"
+          >
+            Menu
+          </button>
+
+          {menuOpen && (
+            <div className="absolute right-0 mt-2 w-64 rounded-xl bg-[#EFE6DA] p-2 shadow-lg z-50">
+              <div className="px-3 py-2 text-xs opacity-70">
+                {userId ? (
+                  <>
+                    Signed in as
+                    <div className="font-medium text-sm opacity-100">
+                      {userEmail ?? "Unknown email"}
+                    </div>
+                  </>
+                ) : (
+                  <div className="font-medium text-sm opacity-100">
+                    Not signed in
+                  </div>
+                )}
+              </div>
+
+              <div className="h-px bg-[#E3DACF] my-1" />
+
+              <button
+                onClick={copyShareLink}
+                className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
+              >
+                Copy shareable link
+              </button>
+
+              <button
+                onClick={downloadPDF}
+                className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
+              >
+                Download current selection as PDF
+              </button>
+
+              <div className="h-px bg-[#E3DACF] my-1" />
+
+              {userId ? (
+                <button
+                  onClick={handleLogout}
+                  className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
+                >
+                  Log out
+                </button>
+              ) : (
+                <button
+                  onClick={handleLogin}
+                  className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
+                >
+                  Log in
+                </button>
+              )}
+            </div>
           )}
         </div>
       </header>
 
+      {/* Print header */}
+      <header className="mb-4 hidden print:block">
+        <h1 className="text-xl font-semibold">Alpha Drive One Collection Tracker</h1>
+        <p className="text-xs opacity-70">Printed view • {activeFiltersLabel}</p>
+      </header>
+
       {/* Hint */}
       {showHint && (
-        <div className="mb-4 rounded-xl bg-[#EFE6DA] p-3 text-sm">
+        <div className="mb-4 rounded-xl bg-[#EFE6DA] p-3 text-sm print:hidden">
           <div className="flex items-start justify-between gap-3">
             <p className="leading-snug">
               Tip: <b>Tap</b> a card to change status. <b>Double tap</b> to see the
@@ -300,7 +477,7 @@ export default function Home() {
       )}
 
       {/* Member selector */}
-      <section className="mb-4 overflow-x-auto">
+      <section className="mb-4 overflow-x-auto print:hidden">
         <div className="flex gap-2">
           <button
             onClick={() => setSelectedMembers([])}
@@ -334,30 +511,52 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Filters */}
-      <section className="mb-6 flex gap-2">
-        <select
-          className="w-1/2 rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
-          value={selectedEra}
-          onChange={(e) => setSelectedEra(e.target.value)}
-        >
-          <option value="All">All eras</option>
-          <option value="Euphoria">Euphoria</option>
-          <option value="b2p">Boys 2 Planet</option>
-          <option value="Otro">Otros</option>
-        </select>
+      {/* Filters row + Reset button */}
+      <section className="mb-6 flex flex-col gap-2 print:hidden">
+        <div className="flex gap-2 items-center">
+          <select
+            className="flex-1 rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
+            value={selectedEra}
+            onChange={(e) => setSelectedEra(e.target.value)}
+          >
+            <option value="All">All eras</option>
+            <option value="Euphoria">Euphoria</option>
+            <option value="b2p">Boys 2 Planet</option>
+            <option value="Otro">Otros</option>
+          </select>
 
-        <select
-          className="w-1/2 rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
-          value={selectedType}
-          onChange={(e) => setSelectedType(e.target.value)}
-        >
-          <option value="All">All types</option>
-          <option value="Album">Album</option>
-          <option value="POB">POB</option>
-          <option value="Merch">Merch</option>
-          <option value="Other">Other</option>
-        </select>
+          <select
+            className="flex-1 rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
+            value={selectedType}
+            onChange={(e) => setSelectedType(e.target.value)}
+          >
+            <option value="All">All types</option>
+            <option value="Album">Album</option>
+            <option value="POB">POB</option>
+            <option value="Merch">Merch</option>
+            <option value="Other">Other</option>
+          </select>
+
+          <select
+            className="flex-1 rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value)}
+          >
+            <option value="All">All statuses</option>
+            <option value="Missing">Missing (unmarked)</option>
+            <option value="prio">Prio</option>
+            <option value="otw">OTW</option>
+            <option value="owned">Owned</option>
+          </select>
+
+          <button
+  onClick={resetFilters}
+  className="shrink-0 rounded-md bg-[#C8B6A6] px-3 py-2 text-sm font-medium shadow-sm hover:opacity-90"
+>
+  Reset
+</button>
+
+        </div>
       </section>
 
       {/* Progress */}
@@ -374,7 +573,7 @@ export default function Home() {
         const percent = Math.round((completed / total) * 100);
 
         return (
-          <div className="mb-4">
+          <div className="mb-4 print:hidden">
             <div className="flex justify-end text-[11px] opacity-60 mb-1">
               {percent}%
             </div>
@@ -392,7 +591,7 @@ export default function Home() {
       {loading ? (
         <p className="text-center text-sm opacity-60">Loading photocards…</p>
       ) : (
-        <section className="grid grid-cols-4 md:grid-cols-8 gap-2">
+        <section className="grid grid-cols-4 md:grid-cols-8 gap-2 print:grid-cols-10 print:gap-1">
           {visiblePCs.map((pc) => {
             const status = pcStatus[pc.id];
             const showMobileName = showNameFor === pc.id;
@@ -400,7 +599,7 @@ export default function Home() {
             return (
               <button
                 key={pc.id}
-                className="group relative aspect-[2.8/4] rounded-lg bg-[#EFE6DA] overflow-hidden"
+                className="group relative aspect-[2.8/4] rounded-lg bg-[#EFE6DA] overflow-hidden print:rounded-md"
                 onClick={() => handleCardTap(pc.id)}
               >
                 {pc.image_url ? (
@@ -415,12 +614,8 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Tint for null / prio / otw (disappears once owned) */}
-                {status !== "owned" && (
-                  <div className="absolute inset-0 bg-black/30" />
-                )}
+                {status !== "owned" && <div className="absolute inset-0 bg-black/30" />}
 
-                {/* Status badge */}
                 {status && (
                   <span
                     className={`absolute top-1 right-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white ${
@@ -435,7 +630,6 @@ export default function Home() {
                   </span>
                 )}
 
-                {/* PC name: Desktop hover + Mobile double-tap */}
                 {pc.pc_name && (
                   <div
                     className={[
