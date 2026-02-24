@@ -58,6 +58,10 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
+  // Status dropdown per card
+  const [statusMenuFor, setStatusMenuFor] = useState<number | null>(null);
+  const statusMenuRef = useRef<HTMLDivElement | null>(null);
+
   // ----------------------------
   // AUTH SESSION
   // ----------------------------
@@ -87,6 +91,25 @@ export default function Home() {
       if (!menuRef.current) return;
       if (menuRef.current.contains(e.target as Node)) return;
       setMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown);
+
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
+    };
+  }, []);
+
+  // ----------------------------
+  // STATUS MENU: CLOSE ON OUTSIDE CLICK
+  // ----------------------------
+  useEffect(() => {
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      if (!statusMenuRef.current) return;
+      if (statusMenuRef.current.contains(e.target as Node)) return;
+      setStatusMenuFor(null);
     };
 
     document.addEventListener("mousedown", onDown);
@@ -242,7 +265,59 @@ export default function Home() {
   };
 
   // ----------------------------
-  // MOBILE: SINGLE TAP cycles, DOUBLE TAP shows name
+  // SET STATUS (DROPDOWN ACTION)
+  // ----------------------------
+  const setStatus = async (pcId: number, next: Status | null) => {
+    if (!userId) {
+      router.push("/login");
+      return;
+    }
+
+    // DELETE when setting to null (Missing/unmarked)
+    if (next === null) {
+      const { error } = await supabase
+        .from("user_pcs")
+        .delete()
+        .eq("user_id", userId)
+        .eq("pc_id", pcId);
+
+      if (error) console.error("Delete error:", error.message);
+
+      setPcStatus((prev) => {
+        const copy = { ...prev };
+        delete copy[pcId];
+        return copy;
+      });
+
+      return;
+    }
+
+    // UPDATE first
+    const { data: updated, error: updateError } = await supabase
+      .from("user_pcs")
+      .update({ status: next })
+      .eq("user_id", userId)
+      .eq("pc_id", pcId)
+      .select();
+
+    if (updateError) console.error("Update error:", updateError);
+
+    // INSERT fallback
+    if (!updated || updated.length === 0) {
+      const { error: insertError } = await supabase.from("user_pcs").insert({
+        user_id: userId,
+        pc_id: pcId,
+        status: next,
+      });
+
+      if (insertError) console.error("Insert error:", insertError);
+    }
+
+    setPcStatus((prev) => ({ ...prev, [pcId]: next }));
+  };
+
+  // ----------------------------
+  // MOBILE: SINGLE TAP opens dropdown, DOUBLE TAP shows name
   // ----------------------------
   const handleCardTap = (pcId: number) => {
     const now = Date.now();
@@ -268,7 +343,7 @@ export default function Home() {
     lastTapRef.current[pcId] = now;
 
     singleTapTimerRef.current[pcId] = setTimeout(() => {
-      cycleStatus(pcId);
+      setStatusMenuFor((cur) => (cur === pcId ? null : pcId));
       lastTapRef.current[pcId] = 0;
     }, 300);
   };
@@ -290,42 +365,12 @@ export default function Home() {
   // ----------------------------
   // SHAREABLE LINK + PRINT-TO-PDF
   // ----------------------------
-  const buildShareUrl = () => {
-    const params = new URLSearchParams();
-
-    if (selectedMembers.length > 0) params.set("members", selectedMembers.join(","));
-    if (selectedEra !== "All") params.set("era", selectedEra);
-    if (selectedType !== "All") params.set("type", selectedType);
-    if (selectedStatus !== "All") params.set("status", selectedStatus);
-
-    const base =
-      typeof window !== "undefined"
-        ? window.location.origin + window.location.pathname
-        : "";
-
-    const qs = params.toString();
-    return qs ? `${base}?${qs}` : base;
-  };
-
-  const copyShareLink = async () => {
-    try {
-      const url = buildShareUrl();
-      await navigator.clipboard.writeText(url);
-      alert("Link copied!");
-      setMenuOpen(false);
-    } catch {
-      alert("Could not copy. Try manually copying the URL from the address bar.");
-    }
-  };
 
   const downloadPDF = () => {
     setMenuOpen(false);
     window.print();
   };
 
-  // ----------------------------
-  // APPLY FILTERS FROM URL ON LOAD
-  // ----------------------------
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -368,7 +413,8 @@ export default function Home() {
   const activeFiltersLabel = (() => {
     const parts: string[] = [];
 
-    if (selectedMembers.length > 0) parts.push(`Members: ${selectedMembers.join(", ")}`);
+    if (selectedMembers.length > 0)
+      parts.push(`Members: ${selectedMembers.join(", ")}`);
     if (selectedEra !== "All") parts.push(`Era: ${selectedEra}`);
     if (selectedType !== "All") parts.push(`Type: ${selectedType}`);
     if (selectedStatus !== "All") parts.push(`Status: ${selectedStatus}`);
@@ -417,13 +463,6 @@ export default function Home() {
               <div className="h-px bg-[#E3DACF] my-1" />
 
               <button
-                onClick={copyShareLink}
-                className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
-              >
-                Copy shareable link
-              </button>
-
-              <button
                 onClick={downloadPDF}
                 className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
               >
@@ -454,7 +493,9 @@ export default function Home() {
 
       {/* Print header */}
       <header className="mb-4 hidden print:block">
-        <h1 className="text-xl font-semibold">Alpha Drive One Collection Tracker</h1>
+        <h1 className="text-xl font-semibold">
+          Alpha Drive One Collection Tracker
+        </h1>
         <p className="text-xs opacity-70">Printed view • {activeFiltersLabel}</p>
       </header>
 
@@ -463,8 +504,8 @@ export default function Home() {
         <div className="mb-4 rounded-xl bg-[#EFE6DA] p-3 text-sm print:hidden">
           <div className="flex items-start justify-between gap-3">
             <p className="leading-snug">
-              Tip: <b>Tap</b> a card to change status. <b>Double tap</b> to see the
-              PC name.
+              Tip: On mobile <b>Tap</b> a card to change status. <b>Double tap</b>{" "}
+              to see the PC name.
             </p>
             <button
               onClick={dismissHint}
@@ -522,7 +563,7 @@ export default function Home() {
             <option value="All">All eras</option>
             <option value="Euphoria">Euphoria</option>
             <option value="b2p">Boys 2 Planet</option>
-            <option value="Otro">Otros</option>
+            <option value="Other">Other</option>
           </select>
 
           <select
@@ -534,6 +575,7 @@ export default function Home() {
             <option value="Album">Album</option>
             <option value="POB">POB</option>
             <option value="Merch">Merch</option>
+            <option value="Event">Event</option>
             <option value="Other">Other</option>
           </select>
 
@@ -550,12 +592,11 @@ export default function Home() {
           </select>
 
           <button
-  onClick={resetFilters}
-  className="shrink-0 rounded-md bg-[#C8B6A6] px-3 py-2 text-sm font-medium shadow-sm hover:opacity-90"
->
-  Reset
-</button>
-
+            onClick={resetFilters}
+            className="shrink-0 rounded-md bg-[#C8B6A6] px-3 py-2 text-sm font-medium shadow-sm hover:opacity-90"
+          >
+            Reset
+          </button>
         </div>
       </section>
 
@@ -597,51 +638,117 @@ export default function Home() {
             const showMobileName = showNameFor === pc.id;
 
             return (
-              <button
-                key={pc.id}
-                className="group relative aspect-[2.8/4] rounded-lg bg-[#EFE6DA] overflow-hidden print:rounded-md"
-                onClick={() => handleCardTap(pc.id)}
-              >
-                {pc.image_url ? (
-                  <img
-                    src={pc.image_url}
-                    alt={pc.pc_name ?? pc.member}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-xs opacity-60">
-                    {pc.member}
-                  </div>
-                )}
+              <div key={pc.id} className="relative">
+                <button
+                  className="group relative aspect-[2.8/4] rounded-lg bg-[#EFE6DA] overflow-hidden print:rounded-md w-full"
+                  onClick={() => handleCardTap(pc.id)}
+                >
+                  {pc.image_url ? (
+                    <img
+                      src={pc.image_url}
+                      alt={pc.pc_name ?? pc.member}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-xs opacity-60">
+                      {pc.member}
+                    </div>
+                  )}
 
-                {status !== "owned" && <div className="absolute inset-0 bg-black/30" />}
+                  {status !== "owned" && (
+                    <div className="absolute inset-0 bg-black/30" />
+                  )}
 
-                {status && (
-                  <span
-                    className={`absolute top-1 right-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white ${
-                      status === "owned"
-                        ? "bg-green-600"
-                        : status === "otw"
-                        ? "bg-blue-500"
-                        : "bg-pink-500"
-                    }`}
-                  >
-                    {status.toUpperCase()}
-                  </span>
-                )}
+                  {status && (
+                    <span
+                      className={`absolute top-1 right-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white ${
+                        status === "owned"
+                          ? "bg-green-600"
+                          : status === "otw"
+                          ? "bg-blue-500"
+                          : "bg-pink-500"
+                      }`}
+                    >
+                      {status.toUpperCase()}
+                    </span>
+                  )}
 
-                {pc.pc_name && (
+                  {pc.pc_name && (
+                    <div
+                      className={[
+                        "absolute bottom-0 w-full bg-black/60 px-1 py-0.5 text-[10px] text-white text-center",
+                        "md:opacity-0 md:group-hover:opacity-100 md:transition-opacity",
+                        showMobileName ? "opacity-100" : "opacity-0 md:opacity-0",
+                      ].join(" ")}
+                    >
+                      {pc.pc_name}
+                    </div>
+                  )}
+                </button>
+
+                {statusMenuFor === pc.id && (
                   <div
-                    className={[
-                      "absolute bottom-0 w-full bg-black/60 px-1 py-0.5 text-[10px] text-white text-center",
-                      "md:opacity-0 md:group-hover:opacity-100 md:transition-opacity",
-                      showMobileName ? "opacity-100" : "opacity-0 md:opacity-0",
-                    ].join(" ")}
+                    ref={statusMenuRef}
+                    className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl bg-[#EFE6DA] shadow-lg z-50 p-2 print:hidden"
                   >
-                    {pc.pc_name}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setStatus(pc.id, null);
+                        setStatusMenuFor(null);
+                      }}
+                      className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
+                    >
+                      Missing (unmarked)
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setStatus(pc.id, "prio");
+                        setStatusMenuFor(null);
+                      }}
+                      className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
+                    >
+                      Prio
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setStatus(pc.id, "otw");
+                        setStatusMenuFor(null);
+                      }}
+                      className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
+                    >
+                      OTW
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setStatus(pc.id, "owned");
+                        setStatusMenuFor(null);
+                      }}
+                      className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
+                    >
+                      Owned
+                    </button>
+
+                    <div className="h-px bg-[#E3DACF] my-1" />
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setStatusMenuFor(null);
+                      }}
+                      className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF] opacity-70"
+                    >
+                      Cancel
+                    </button>
                   </div>
                 )}
-              </button>
+              </div>
             );
           })}
         </section>
