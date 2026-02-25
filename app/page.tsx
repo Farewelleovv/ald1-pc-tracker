@@ -415,30 +415,60 @@ export default function Home() {
 
     setIsExporting(true);
 
+    const isIOS =
+      typeof navigator !== "undefined" &&
+      /iPad|iPhone|iPod/.test(navigator.userAgent);
+
     // Let React apply state changes (menus closing + export-only UI)
     await new Promise((r) => requestAnimationFrame(() => r(null)));
     await new Promise((r) => setTimeout(r, 300)); // ✅ longer delay (mobile)
 
-    // Wait for images inside the export area
+    // Wait for fonts to be ready (prevents iOS capturing before fonts paint)
+    // @ts-ignore
+    if (document.fonts?.ready) {
+      // @ts-ignore
+      await document.fonts.ready;
+    }
+
+    // Wait for images inside the export area + force anonymous CORS + decode for Safari
     const imgs = Array.from(exportRef.current.querySelectorAll("img"));
     await Promise.all(
-      imgs.map((img) => {
+      imgs.map(async (img) => {
         const i = img as HTMLImageElement;
-        if (i.complete && i.naturalWidth > 0) return Promise.resolve();
-        return new Promise<void>((resolve) => {
-          const done = () => resolve();
-          i.addEventListener("load", done, { once: true });
-          i.addEventListener("error", done, { once: true });
-        });
+
+        // ensure anonymous CORS (important for iOS canvas capture)
+        try {
+          i.crossOrigin = "anonymous";
+        } catch {}
+
+        if (!(i.complete && i.naturalWidth > 0)) {
+          await new Promise<void>((resolve) => {
+            const done = () => resolve();
+            i.addEventListener("load", done, { once: true });
+            i.addEventListener("error", done, { once: true });
+          });
+        }
+
+        // @ts-ignore
+        if (i.decode) {
+          try {
+            // @ts-ignore
+            await i.decode();
+          } catch {
+            // ignore decode failures
+          }
+        }
       })
     );
 
     try {
+      const ratio = isIOS ? 2 : Math.min(3, window.devicePixelRatio || 1);
+
       const dataUrl = await htmlToImage.toPng(exportRef.current, {
         cacheBust: true,
         backgroundColor: "#F7F2EB",
-        pixelRatio: 1, // ✅ keep stable esp. mobile
-        skipFonts: true,
+        pixelRatio: ratio, // ✅ higher-res exports, capped for iOS stability
+        skipFonts: false, // ✅ allow fonts; we wait for fonts above
         imagePlaceholder:
           "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQImWNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==",
         fetchRequestInit: { mode: "cors", credentials: "omit" } as RequestInit,
@@ -915,6 +945,8 @@ export default function Home() {
                         alt={pc.pc_name ?? pc.member}
                         className="h-full w-full object-cover"
                         crossOrigin="anonymous"
+                        loading="eager"
+                        decoding="async"
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center text-xs opacity-60">
