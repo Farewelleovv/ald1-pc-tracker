@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import * as htmlToImage from "html-to-image";
 
 const MEMBERS = [
   "Leo",
@@ -31,7 +30,12 @@ type Photocard = {
 const STATUS_ORDER: (Status | null)[] = [null, "prio", "otw", "owned"];
 
 // Sort grouping order (status-sort mode)
-const STATUS_SORT_ORDER: (Status | "Missing")[] = ["owned", "otw", "prio", "Missing"];
+const STATUS_SORT_ORDER: (Status | "Missing")[] = [
+  "owned",
+  "otw",
+  "prio",
+  "Missing",
+];
 
 export default function Home() {
   const router = useRouter();
@@ -56,9 +60,9 @@ export default function Home() {
   // Mobile: double-tap show PC name
   const [showNameFor, setShowNameFor] = useState<number | null>(null);
   const lastTapRef = useRef<Record<number, number>>({});
-  const singleTapTimerRef = useRef<Record<number, ReturnType<typeof setTimeout>>>(
-    {}
-  );
+  const singleTapTimerRef = useRef<
+    Record<number, ReturnType<typeof setTimeout>>
+  >({});
 
   // Hint banner (once per device)
   const [showHint, setShowHint] = useState(false);
@@ -405,6 +409,10 @@ export default function Home() {
 
   // ----------------------------
   // PNG DOWNLOAD (REPLACES PDF)
+  // ✅ html2canvas capture
+  // ✅ Fixes Safari export by:
+  //    - proxying images to same-origin /api/img inside CLONE
+  //    - sanitizing ANY oklab/oklch/color-mix(in oklab...) strings inside CLONE
   // ----------------------------
   const downloadPNG = async () => {
     setMenuOpen(false);
@@ -415,82 +423,179 @@ export default function Home() {
 
     setIsExporting(true);
 
-    const isIOS =
-      typeof navigator !== "undefined" &&
-      /iPad|iPhone|iPod/.test(navigator.userAgent);
-
-    // Let React apply state changes (menus closing + export-only UI)
+    // Let React apply state changes
     await new Promise((r) => requestAnimationFrame(() => r(null)));
-    await new Promise((r) => setTimeout(r, 300)); // ✅ longer delay (mobile)
+    await new Promise((r) => setTimeout(r, 350));
 
-    // Wait for fonts to be ready
+    // Wait for fonts
     // @ts-ignore
     if (document.fonts?.ready) {
       // @ts-ignore
       await document.fonts.ready;
     }
 
-    // Wait for images inside the export area (normal load)
-    const imgs = Array.from(exportRef.current.querySelectorAll("img"));
-    await Promise.all(
-      imgs.map((img) => {
-        const i = img as HTMLImageElement;
-        if (i.complete && i.naturalWidth > 0) return Promise.resolve();
-        return new Promise<void>((resolve) => {
-          const done = () => resolve();
-          i.addEventListener("load", done, { once: true });
-          i.addEventListener("error", done, { once: true });
-        });
-      })
-    );
+    const node = exportRef.current;
 
-    // ✅ NEW: inline all images as data URLs for export (fixes iOS missing images + CORS)
-    const originalSrc = new Map<HTMLImageElement, string>();
+    // Give the export root a temporary id so we can find it in html2canvas's cloned DOM
+    const prevId = node.id;
+    const exportId =
+      prevId || `export-root-${Math.random().toString(36).slice(2)}`;
+    node.id = exportId;
+
     try {
-      await Promise.all(
-        imgs.map(async (img) => {
-          const i = img as HTMLImageElement;
-          if (!i.src) return;
+      const html2canvas = (await import("html2canvas")).default;
 
-          originalSrc.set(i, i.src);
+      const scale = Math.min(2, window.devicePixelRatio || 1);
 
-          try {
-            const resp = await fetch(i.src, { mode: "cors", credentials: "omit" });
-            if (!resp.ok) return;
-
-            const blob = await resp.blob();
-            const dataUrl = await new Promise<string>((resolve) => {
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(String(reader.result));
-              reader.readAsDataURL(blob);
-            });
-
-            i.src = dataUrl;
-
-            // @ts-ignore
-            if (i.decode) {
-              try {
-                // @ts-ignore
-                await i.decode();
-              } catch {}
-            }
-          } catch {
-            // if one image fails to inline, we keep going
-          }
-        })
-      );
-
-      const ratio = isIOS ? 2 : Math.min(3, window.devicePixelRatio || 1);
-
-      const dataUrl = await htmlToImage.toPng(exportRef.current, {
-        cacheBust: true,
+      const canvas = await html2canvas(node, {
         backgroundColor: "#F7F2EB",
-        pixelRatio: ratio,
-        skipFonts: false,
-        imagePlaceholder:
-          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQImWNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==",
-        fetchRequestInit: { mode: "cors", credentials: "omit" } as RequestInit,
+        scale,
+        useCORS: true,
+        allowTaint: false,
+        logging: false,
+        scrollX: 0,
+        scrollY: -window.scrollY,
+        windowWidth: document.documentElement.clientWidth,
+        windowHeight: document.documentElement.clientHeight,
+
+        onclone: (clonedDoc) => {
+          const root = clonedDoc.getElementById(exportId) as HTMLElement | null;
+          if (!root) return;
+
+          const view = clonedDoc.defaultView;
+          if (!view) return;
+
+          // Canvas for color normalization (Safari can parse oklab/oklch -> rgb)
+          const c = clonedDoc.createElement("canvas");
+          const ctx = c.getContext("2d");
+
+          const toRgb = (value: string) => {
+            if (!ctx) return value;
+            try {
+              ctx.fillStyle = "#000";
+              ctx.fillStyle = value;
+              return String(ctx.fillStyle);
+            } catch {
+              return value;
+            }
+          };
+
+          const sanitizeColorString = (s: string) => {
+            let out = s;
+
+            // Replace any oklab()/oklch() chunks with rgb equivalents
+            out = out.replace(/okl(?:ab|ch)\([^)]*\)/g, (match) => toRgb(match));
+
+            // html2canvas also chokes on color-mix(in oklab, ...)
+            // We replace the entire color-mix(...) with a safe fallback.
+            // (Export-only. Your UI stays unchanged.)
+            out = out.replace(/color-mix\([^)]*\)/g, () => "#000");
+
+            // Sometimes "in oklab" appears in other funcs; keep it safe
+            out = out.replace(/\bin\s+oklab\b/g, "in srgb");
+
+            return out;
+          };
+
+          // Big list: html2canvas can touch MANY style props during capture
+          const propsToFix: Array<keyof CSSStyleDeclaration> = [
+            "color",
+            "backgroundColor",
+            "borderTopColor",
+            "borderRightColor",
+            "borderBottomColor",
+            "borderLeftColor",
+            "outlineColor",
+            "textDecorationColor",
+            "caretColor",
+            "columnRuleColor",
+            "fill",
+            "stroke",
+            "stopColor",
+            "floodColor",
+            "lightingColor",
+            // compound strings that can contain colors
+            "background",
+            "borderTop",
+            "borderRight",
+            "borderBottom",
+            "borderLeft",
+            "border",
+            "outline",
+            "boxShadow",
+            // textShadow isn't in TS lib type sometimes; set via any below
+          ];
+
+          const all = [
+            root,
+            ...Array.from(root.querySelectorAll<HTMLElement>("*")),
+          ];
+
+          for (const el of all) {
+            const cs = view.getComputedStyle(el);
+
+            for (const prop of propsToFix) {
+              const v = (cs as any)[prop] as string | undefined;
+              if (!v) continue;
+
+              if (
+                !v.includes("oklab(") &&
+                !v.includes("oklch(") &&
+                !v.includes("color-mix(") &&
+                !v.includes("in oklab")
+              ) {
+                continue;
+              }
+
+              const fixed = sanitizeColorString(v);
+
+              try {
+                (el.style as any)[prop] = fixed;
+              } catch {
+                // ignore
+              }
+            }
+
+            // textShadow can contain colors; sanitize via generic setProperty
+            try {
+              const ts = cs.getPropertyValue("text-shadow");
+              if (
+                ts &&
+                (ts.includes("oklab(") ||
+                  ts.includes("oklch(") ||
+                  ts.includes("color-mix(") ||
+                  ts.includes("in oklab"))
+              ) {
+                el.style.setProperty("text-shadow", sanitizeColorString(ts));
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          // Proxy images to SAME-ORIGIN in the CLONE
+          const imgs = Array.from(
+            root.querySelectorAll("img")
+          ) as HTMLImageElement[];
+
+          for (const img of imgs) {
+            if (!img.src) continue;
+
+            const proxied = `${window.location.origin}/api/img?url=${encodeURIComponent(
+              img.src
+            )}`;
+            img.src = proxied;
+
+            try {
+              img.crossOrigin = "anonymous";
+            } catch {
+              // ignore
+            }
+          }
+        },
       });
+
+      const dataUrl = canvas.toDataURL("image/png");
 
       const link = document.createElement("a");
       link.download = "alpha-drive-one-collection.png";
@@ -500,11 +605,7 @@ export default function Home() {
       console.error("PNG export failed:", err);
       alert("PNG export failed. Try again.");
     } finally {
-      // ✅ restore original image URLs after export
-      originalSrc.forEach((src, img) => {
-        img.src = src;
-      });
-
+      node.id = prevId;
       setIsExporting(false);
     }
   };
@@ -776,7 +877,6 @@ export default function Home() {
 
       {/* Filters row + Reset button */}
       <section className="mb-6 flex flex-col gap-2 print:hidden">
-        {/* ✅ CHANGED: 2 rows on mobile only (grid), unchanged on md+ (flex) */}
         <div className="grid grid-cols-2 gap-2 items-center md:flex md:gap-2">
           <select
             className="w-full md:flex-1 rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
@@ -802,7 +902,6 @@ export default function Home() {
             <option value="Other">Other</option>
           </select>
 
-          {/* Multi-status filter dropdown */}
           <div className="w-full md:flex-1 relative" ref={statusFilterRef}>
             <button
               onClick={() => setStatusFilterOpen((v) => !v)}
@@ -872,17 +971,17 @@ export default function Home() {
             )}
           </div>
 
-          {/* Sort control */}
           <select
             className="w-full md:flex-1 rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
             value={sortMode}
-            onChange={(e) => setSortMode(e.target.value as "default" | "status")}
+            onChange={(e) =>
+              setSortMode(e.target.value as "default" | "status")
+            }
           >
             <option value="default">Sort: Default</option>
             <option value="status">Sort: Status</option>
           </select>
 
-          {/* ✅ CHANGED: reset spans both columns on mobile only */}
           <button
             onClick={resetFilters}
             className="col-span-2 md:col-auto shrink-0 rounded-md bg-[#C8B6A6] px-3 py-2 text-sm font-medium shadow-sm hover:opacity-90"
@@ -924,7 +1023,6 @@ export default function Home() {
       {loading ? (
         <p className="text-center text-sm opacity-60">Loading photocards…</p>
       ) : (
-        // ✅ CHANGED: scale only during export
         <div
           ref={exportRef}
           style={
@@ -933,7 +1031,6 @@ export default function Home() {
               : undefined
           }
         >
-          {/* ✅ CHANGED: export header only during export */}
           {isExporting && (
             <div className="mb-2 text-center" style={{ fontFamily: "cursive" }}>
               <div className="text-xl font-semibold">
@@ -946,7 +1043,6 @@ export default function Home() {
           <section
             className={[
               "grid print:grid-cols-10 print:gap-1",
-              // ✅ CHANGED: auto-adaptive export columns ONLY during export
               isExporting
                 ? `${exportColumnClass} gap-1`
                 : "grid-cols-4 md:grid-cols-8 gap-2",
@@ -983,7 +1079,6 @@ export default function Home() {
                     {status && (
                       <span
                         className={`absolute top-1 right-1 rounded-full font-semibold text-white ${
-                          // ✅ CHANGED: badge smaller only during export
                           isExporting
                             ? "px-1.5 py-0 text-[8px]"
                             : "px-2 py-0.5 text-[10px]"
@@ -1004,7 +1099,9 @@ export default function Home() {
                         className={[
                           "absolute bottom-0 w-full bg-black/60 px-1 py-0.5 text-[10px] text-white text-center",
                           "md:opacity-0 md:group-hover:opacity-100 md:transition-opacity",
-                          showMobileName ? "opacity-100" : "opacity-0 md:opacity-0",
+                          showMobileName
+                            ? "opacity-100"
+                            : "opacity-0 md:opacity-0",
                         ].join(" ")}
                       >
                         {pc.pc_name}
