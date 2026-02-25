@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import * as htmlToImage from "html-to-image";
 
 const MEMBERS = [
   "Leo",
@@ -29,6 +30,14 @@ type Photocard = {
 
 const STATUS_ORDER: (Status | null)[] = [null, "prio", "otw", "owned"];
 
+// Sort grouping order (status-sort mode)
+const STATUS_SORT_ORDER: (Status | "Missing")[] = [
+  "owned",
+  "otw",
+  "prio",
+  "Missing",
+];
+
 export default function Home() {
   const router = useRouter();
 
@@ -42,14 +51,19 @@ export default function Home() {
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [selectedEra, setSelectedEra] = useState("All");
   const [selectedType, setSelectedType] = useState("All");
-  const [selectedStatus, setSelectedStatus] = useState("All");
+
+  // Status filter: multi-select
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>(["All"]);
+
+  // Sort mode
+  const [sortMode, setSortMode] = useState<"default" | "status">("default");
 
   // Mobile: double-tap show PC name
   const [showNameFor, setShowNameFor] = useState<number | null>(null);
   const lastTapRef = useRef<Record<number, number>>({});
-  const singleTapTimerRef = useRef<Record<number, ReturnType<typeof setTimeout>>>(
-    {}
-  );
+  const singleTapTimerRef = useRef<
+    Record<number, ReturnType<typeof setTimeout>>
+  >({});
 
   // Hint banner (once per device)
   const [showHint, setShowHint] = useState(false);
@@ -61,6 +75,13 @@ export default function Home() {
   // Status dropdown per card
   const [statusMenuFor, setStatusMenuFor] = useState<number | null>(null);
   const statusMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Status filter dropdown
+  const [statusFilterOpen, setStatusFilterOpen] = useState(false);
+  const statusFilterRef = useRef<HTMLDivElement | null>(null);
+
+  // Export (grid-only)
+  const exportRef = useRef<HTMLDivElement | null>(null);
 
   // ----------------------------
   // AUTH SESSION
@@ -107,9 +128,29 @@ export default function Home() {
   // ----------------------------
   useEffect(() => {
     const onDown = (e: MouseEvent | TouchEvent) => {
+      if (statusMenuFor === null) return;
       if (!statusMenuRef.current) return;
       if (statusMenuRef.current.contains(e.target as Node)) return;
       setStatusMenuFor(null);
+    };
+
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown);
+
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
+    };
+  }, [statusMenuFor]);
+
+  // ----------------------------
+  // STATUS FILTER: CLOSE ON OUTSIDE CLICK
+  // ----------------------------
+  useEffect(() => {
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      if (!statusFilterRef.current) return;
+      if (statusFilterRef.current.contains(e.target as Node)) return;
+      setStatusFilterOpen(false);
     };
 
     document.addEventListener("mousedown", onDown);
@@ -355,7 +396,9 @@ export default function Home() {
     setSelectedMembers([]);
     setSelectedEra("All");
     setSelectedType("All");
-    setSelectedStatus("All");
+    setSelectedStatuses(["All"]);
+    setSortMode("default");
+    setStatusFilterOpen(false);
 
     if (typeof window !== "undefined") {
       window.history.replaceState({}, "", window.location.pathname);
@@ -363,12 +406,48 @@ export default function Home() {
   };
 
   // ----------------------------
-  // SHAREABLE LINK + PRINT-TO-PDF
+  // PNG DOWNLOAD (REPLACES PDF)
   // ----------------------------
-
-  const downloadPDF = () => {
+  const downloadPNG = async () => {
     setMenuOpen(false);
-    window.print();
+    setStatusFilterOpen(false);
+    setStatusMenuFor(null);
+
+    if (!exportRef.current) return;
+
+    // Let React apply state changes (menus closing)
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    await new Promise((r) => setTimeout(r, 80));
+
+    // Wait for images inside the export area
+    const imgs = Array.from(exportRef.current.querySelectorAll("img"));
+    await Promise.all(
+      imgs.map((img) => {
+        if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          const done = () => resolve();
+          img.addEventListener("load", done, { once: true });
+          img.addEventListener("error", done, { once: true });
+        });
+      })
+    );
+
+    try {
+      const dataUrl = await htmlToImage.toPng(exportRef.current, {
+        cacheBust: true,
+        backgroundColor: "#F7F2EB",
+        pixelRatio: 2,
+      });
+
+      const link = document.createElement("a");
+      link.download = "alpha-drive-one-collection.png";
+      link.href = dataUrl;
+      link.click();
+    } catch (err: any) {
+      // This gives you *something* useful when the library throws {}
+      console.error("PNG export failed:", err);
+      alert("PNG export failed. Try again after the images finish loading.");
+    }
   };
 
   useEffect(() => {
@@ -380,35 +459,77 @@ export default function Home() {
     const era = params.get("era");
     const type = params.get("type");
     const status = params.get("status");
+    const sort = params.get("sort");
 
     if (members) setSelectedMembers(members.split(",").filter(Boolean));
     if (era) setSelectedEra(era);
     if (type) setSelectedType(type);
-    if (status) setSelectedStatus(status);
+
+    // status can be comma-separated for multi-select now
+    if (status) {
+      const list = status.split(",").filter(Boolean);
+      setSelectedStatuses(list.length ? list : ["All"]);
+    }
+
+    if (sort === "status") setSortMode("status");
   }, []);
 
   // ----------------------------
   // FILTERING
   // ----------------------------
-  const visiblePCs = pcs.filter((pc) => {
+  const visiblePCsUnsorted = pcs.filter((pc) => {
     if (selectedMembers.length > 0 && !selectedMembers.includes(pc.member))
       return false;
 
     if (selectedEra !== "All" && pc.era !== selectedEra) return false;
     if (selectedType !== "All" && pc.type !== selectedType) return false;
 
-    if (selectedStatus !== "All") {
+    // Multi status filter
+    if (!selectedStatuses.includes("All")) {
       const status = pcStatus[pc.id] ?? null;
 
-      if (selectedStatus === "Missing") {
-        if (status !== null) return false;
-      } else {
-        if (status !== (selectedStatus.toLowerCase() as Status)) return false;
-      }
+      const wantsMissing = selectedStatuses.includes("Missing");
+      const wantsPrio = selectedStatuses.includes("prio");
+      const wantsOtw = selectedStatuses.includes("otw");
+      const wantsOwned = selectedStatuses.includes("owned");
+
+      const matchesMissing = wantsMissing && status === null;
+      const matchesPrio = wantsPrio && status === "prio";
+      const matchesOtw = wantsOtw && status === "otw";
+      const matchesOwned = wantsOwned && status === "owned";
+
+      if (!(matchesMissing || matchesPrio || matchesOtw || matchesOwned))
+        return false;
     }
 
     return true;
   });
+
+  // ----------------------------
+  // SORTING (OPTIONAL)
+  // Respects original order_sort by using the current order as tie-breaker.
+  // ----------------------------
+  const visiblePCs = (() => {
+    if (sortMode === "default") return visiblePCsUnsorted;
+
+    const originalIndex = new Map<number, number>();
+    visiblePCsUnsorted.forEach((pc, idx) => originalIndex.set(pc.id, idx));
+
+    const rank = (pcId: number) => {
+      const s = pcStatus[pcId] ?? null;
+      const key: Status | "Missing" = s === null ? "Missing" : s;
+      const idx = STATUS_SORT_ORDER.indexOf(key);
+      return idx === -1 ? 999 : idx;
+    };
+
+    return [...visiblePCsUnsorted].sort((a, b) => {
+      const ra = rank(a.id);
+      const rb = rank(b.id);
+      if (ra !== rb) return ra - rb;
+      // preserve original ordering within the same status group
+      return (originalIndex.get(a.id) ?? 0) - (originalIndex.get(b.id) ?? 0);
+    });
+  })();
 
   const activeFiltersLabel = (() => {
     const parts: string[] = [];
@@ -417,11 +538,39 @@ export default function Home() {
       parts.push(`Members: ${selectedMembers.join(", ")}`);
     if (selectedEra !== "All") parts.push(`Era: ${selectedEra}`);
     if (selectedType !== "All") parts.push(`Type: ${selectedType}`);
-    if (selectedStatus !== "All") parts.push(`Status: ${selectedStatus}`);
+    if (!selectedStatuses.includes("All"))
+      parts.push(`Status: ${selectedStatuses.join(", ")}`);
+    if (sortMode === "status") parts.push(`Sort: Status`);
 
     if (parts.length === 0) return "No filters applied";
     return parts.join(" • ");
   })();
+
+  const statusFilterLabel = (() => {
+    if (selectedStatuses.includes("All")) return "All statuses";
+    return selectedStatuses.join(", ");
+  })();
+
+  const toggleStatusFilterValue = (val: string) => {
+    setSelectedStatuses((prev) => {
+      // If clicking All -> set only All
+      if (val === "All") return ["All"];
+
+      // Remove All if present
+      let next = prev.includes("All") ? [] : [...prev];
+
+      if (next.includes(val)) {
+        next = next.filter((x) => x !== val);
+      } else {
+        next.push(val);
+      }
+
+      // If nothing selected, fall back to All
+      if (next.length === 0) return ["All"];
+
+      return next;
+    });
+  };
 
   return (
     <main className="min-h-screen bg-[#F7F2EB] text-[#4A3F35] px-3 py-4">
@@ -463,10 +612,10 @@ export default function Home() {
               <div className="h-px bg-[#E3DACF] my-1" />
 
               <button
-                onClick={downloadPDF}
+                onClick={downloadPNG}
                 className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
               >
-                Download current selection as PDF
+                Download current selection as PNG
               </button>
 
               <div className="h-px bg-[#E3DACF] my-1" />
@@ -579,16 +728,86 @@ export default function Home() {
             <option value="Other">Other</option>
           </select>
 
+          {/* Multi-status filter dropdown */}
+          <div className="flex-1 relative" ref={statusFilterRef}>
+            <button
+              onClick={() => setStatusFilterOpen((v) => !v)}
+              className="w-full rounded-md bg-[#EFE6DA] px-3 py-2 text-sm text-left"
+            >
+              {statusFilterLabel}
+            </button>
+
+            {statusFilterOpen && (
+              <div className="absolute left-0 right-0 mt-2 rounded-xl bg-[#EFE6DA] shadow-lg z-50 p-2">
+                <label className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedStatuses.includes("All")}
+                    onChange={() => toggleStatusFilterValue("All")}
+                  />
+                  All statuses
+                </label>
+
+                <div className="h-px bg-[#E3DACF] my-1" />
+
+                <label className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedStatuses.includes("Missing")}
+                    onChange={() => toggleStatusFilterValue("Missing")}
+                  />
+                  Missing (unmarked)
+                </label>
+
+                <label className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedStatuses.includes("prio")}
+                    onChange={() => toggleStatusFilterValue("prio")}
+                  />
+                  Prio
+                </label>
+
+                <label className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedStatuses.includes("otw")}
+                    onChange={() => toggleStatusFilterValue("otw")}
+                  />
+                  OTW
+                </label>
+
+                <label className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedStatuses.includes("owned")}
+                    onChange={() => toggleStatusFilterValue("owned")}
+                  />
+                  Owned
+                </label>
+
+                <div className="h-px bg-[#E3DACF] my-1" />
+
+                <button
+                  onClick={() => setStatusFilterOpen(false)}
+                  className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF] opacity-70"
+                >
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Sort control */}
           <select
             className="flex-1 rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
+            value={sortMode}
+            onChange={(e) =>
+              setSortMode(e.target.value as "default" | "status")
+            }
           >
-            <option value="All">All statuses</option>
-            <option value="Missing">Missing (unmarked)</option>
-            <option value="prio">Prio</option>
-            <option value="otw">OTW</option>
-            <option value="owned">Owned</option>
+            <option value="default">Sort: Default</option>
+            <option value="status">Sort: Status</option>
           </select>
 
           <button
@@ -632,126 +851,131 @@ export default function Home() {
       {loading ? (
         <p className="text-center text-sm opacity-60">Loading photocards…</p>
       ) : (
-        <section className="grid grid-cols-4 md:grid-cols-8 gap-2 print:grid-cols-10 print:gap-1">
-          {visiblePCs.map((pc) => {
-            const status = pcStatus[pc.id];
-            const showMobileName = showNameFor === pc.id;
+        <div ref={exportRef}>
+          <section className="grid grid-cols-4 md:grid-cols-8 gap-2 print:grid-cols-10 print:gap-1">
+            {visiblePCs.map((pc) => {
+              const status = pcStatus[pc.id];
+              const showMobileName = showNameFor === pc.id;
 
-            return (
-              <div key={pc.id} className="relative">
-                <button
-                  className="group relative aspect-[2.8/4] rounded-lg bg-[#EFE6DA] overflow-hidden print:rounded-md w-full"
-                  onClick={() => handleCardTap(pc.id)}
-                >
-                  {pc.image_url ? (
-                    <img
-                      src={pc.image_url}
-                      alt={pc.pc_name ?? pc.member}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-xs opacity-60">
-                      {pc.member}
-                    </div>
-                  )}
-
-                  {status !== "owned" && (
-                    <div className="absolute inset-0 bg-black/30" />
-                  )}
-
-                  {status && (
-                    <span
-                      className={`absolute top-1 right-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white ${
-                        status === "owned"
-                          ? "bg-green-600"
-                          : status === "otw"
-                          ? "bg-blue-500"
-                          : "bg-pink-500"
-                      }`}
-                    >
-                      {status.toUpperCase()}
-                    </span>
-                  )}
-
-                  {pc.pc_name && (
-                    <div
-                      className={[
-                        "absolute bottom-0 w-full bg-black/60 px-1 py-0.5 text-[10px] text-white text-center",
-                        "md:opacity-0 md:group-hover:opacity-100 md:transition-opacity",
-                        showMobileName ? "opacity-100" : "opacity-0 md:opacity-0",
-                      ].join(" ")}
-                    >
-                      {pc.pc_name}
-                    </div>
-                  )}
-                </button>
-
-                {statusMenuFor === pc.id && (
-                  <div
-                    ref={statusMenuRef}
-                    className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl bg-[#EFE6DA] shadow-lg z-50 p-2 print:hidden"
+              return (
+                <div key={pc.id} className="relative">
+                  <button
+                    className="group relative aspect-[2.8/4] rounded-lg bg-[#EFE6DA] overflow-hidden print:rounded-md w-full"
+                    onClick={() => handleCardTap(pc.id)}
                   >
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setStatus(pc.id, null);
-                        setStatusMenuFor(null);
-                      }}
-                      className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
-                    >
-                      Missing (unmarked)
-                    </button>
+                    {pc.image_url ? (
+                      <img
+                        src={pc.image_url}
+                        alt={pc.pc_name ?? pc.member}
+                        className="h-full w-full object-cover"
+                        crossOrigin="anonymous"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-xs opacity-60">
+                        {pc.member}
+                      </div>
+                    )}
 
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setStatus(pc.id, "prio");
-                        setStatusMenuFor(null);
-                      }}
-                      className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
-                    >
-                      Prio
-                    </button>
+                    {status !== "owned" && (
+                      <div className="absolute inset-0 bg-black/30" />
+                    )}
 
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setStatus(pc.id, "otw");
-                        setStatusMenuFor(null);
-                      }}
-                      className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
-                    >
-                      OTW
-                    </button>
+                    {status && (
+                      <span
+                        className={`absolute top-1 right-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white ${
+                          status === "owned"
+                            ? "bg-green-600"
+                            : status === "otw"
+                            ? "bg-blue-500"
+                            : "bg-pink-500"
+                        }`}
+                      >
+                        {status.toUpperCase()}
+                      </span>
+                    )}
 
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setStatus(pc.id, "owned");
-                        setStatusMenuFor(null);
-                      }}
-                      className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
-                    >
-                      Owned
-                    </button>
+                    {pc.pc_name && (
+                      <div
+                        className={[
+                          "absolute bottom-0 w-full bg-black/60 px-1 py-0.5 text-[10px] text-white text-center",
+                          "md:opacity-0 md:group-hover:opacity-100 md:transition-opacity",
+                          showMobileName
+                            ? "opacity-100"
+                            : "opacity-0 md:opacity-0",
+                        ].join(" ")}
+                      >
+                        {pc.pc_name}
+                      </div>
+                    )}
+                  </button>
 
-                    <div className="h-px bg-[#E3DACF] my-1" />
-
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setStatusMenuFor(null);
-                      }}
-                      className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF] opacity-70"
+                  {statusMenuFor === pc.id && (
+                    <div
+                      ref={statusMenuRef}
+                      className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl bg-[#EFE6DA] shadow-lg z-50 p-2 print:hidden"
                     >
-                      Cancel
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </section>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStatus(pc.id, null);
+                          setStatusMenuFor(null);
+                        }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
+                      >
+                        Missing (unmarked)
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStatus(pc.id, "prio");
+                          setStatusMenuFor(null);
+                        }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
+                      >
+                        Prio
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStatus(pc.id, "otw");
+                          setStatusMenuFor(null);
+                        }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
+                      >
+                        OTW
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStatus(pc.id, "owned");
+                          setStatusMenuFor(null);
+                        }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
+                      >
+                        Owned
+                      </button>
+
+                      <div className="h-px bg-[#E3DACF] my-1" />
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStatusMenuFor(null);
+                        }}
+                        className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF] opacity-70"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </section>
+        </div>
       )}
     </main>
   );
