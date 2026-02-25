@@ -83,6 +83,9 @@ export default function Home() {
   // Export (grid-only)
   const exportRef = useRef<HTMLDivElement | null>(null);
 
+  // Export mode (shrink ONLY for PNG)
+  const [isExporting, setIsExporting] = useState(false);
+
   // ----------------------------
   // AUTH SESSION
   // ----------------------------
@@ -406,47 +409,61 @@ export default function Home() {
   };
 
   // ----------------------------
-  // PNG DOWNLOAD (REPLACES PDF)
+  // PNG DOWNLOAD (SHRINKS ONLY DURING EXPORT)
   // ----------------------------
   const downloadPNG = async () => {
     setMenuOpen(false);
     setStatusFilterOpen(false);
     setStatusMenuFor(null);
 
-    if (!exportRef.current) return;
+    const node = exportRef.current;
+    if (!node) return;
 
-    // Let React apply state changes (menus closing)
+    // shrink UI only for capture
+    setIsExporting(true);
+
+    // let React apply shrink + close menus
     await new Promise((r) => requestAnimationFrame(() => r(null)));
-    await new Promise((r) => setTimeout(r, 80));
+    await new Promise((r) => setTimeout(r, 120));
 
-    // Wait for images inside the export area
-    const imgs = Array.from(exportRef.current.querySelectorAll("img"));
-    await Promise.all(
-      imgs.map((img) => {
-        if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-        return new Promise<void>((resolve) => {
-          const done = () => resolve();
-          img.addEventListener("load", done, { once: true });
-          img.addEventListener("error", done, { once: true });
-        });
-      })
-    );
+    // wait for images (but don’t block forever)
+    const imgs = Array.from(node.querySelectorAll("img")) as HTMLImageElement[];
+    const waitForImg = (img: HTMLImageElement) =>
+      new Promise<void>((resolve) => {
+        if (img.complete) return resolve();
+        const done = () => resolve();
+        img.addEventListener("load", done, { once: true });
+        img.addEventListener("error", done, { once: true });
+      });
+
+    await Promise.race([
+      Promise.all(imgs.map(waitForImg)),
+      new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+    ]);
 
     try {
-      const dataUrl = await htmlToImage.toPng(exportRef.current, {
+      const dataUrl = await htmlToImage.toPng(node, {
         cacheBust: true,
         backgroundColor: "#F7F2EB",
-        pixelRatio: 2,
+        pixelRatio: 1, // keep stable
+        skipFonts: true,
+        imagePlaceholder:
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQImWNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==",
+        fetchRequestInit: { mode: "cors", credentials: "omit" } as RequestInit,
       });
 
       const link = document.createElement("a");
       link.download = "alpha-drive-one-collection.png";
       link.href = dataUrl;
       link.click();
-    } catch (err: any) {
-      // This gives you *something* useful when the library throws {}
+    } catch (err) {
       console.error("PNG export failed:", err);
-      alert("PNG export failed. Try again after the images finish loading.");
+      alert(
+        "PNG export failed. With 500 cards, it may still be too large. Try filtering down or we can export in multiple parts."
+      );
+    } finally {
+      // restore normal UI
+      setIsExporting(false);
     }
   };
 
@@ -852,7 +869,14 @@ export default function Home() {
         <p className="text-center text-sm opacity-60">Loading photocards…</p>
       ) : (
         <div ref={exportRef}>
-          <section className="grid grid-cols-4 md:grid-cols-8 gap-2 print:grid-cols-10 print:gap-1">
+          <section
+            className={[
+              "grid gap-2 print:grid-cols-10 print:gap-1",
+              isExporting
+                ? "grid-cols-8 md:grid-cols-12 gap-1" // ✅ smaller ONLY during export
+                : "grid-cols-4 md:grid-cols-8",
+            ].join(" ")}
+          >
             {visiblePCs.map((pc) => {
               const status = pcStatus[pc.id];
               const showMobileName = showNameFor === pc.id;
@@ -860,7 +884,10 @@ export default function Home() {
               return (
                 <div key={pc.id} className="relative">
                   <button
-                    className="group relative aspect-[2.8/4] rounded-lg bg-[#EFE6DA] overflow-hidden print:rounded-md w-full"
+                    className={[
+                      "group relative rounded-lg bg-[#EFE6DA] overflow-hidden print:rounded-md w-full",
+                      isExporting ? "aspect-[2.8/4]" : "aspect-[2.8/4]", // keep aspect
+                    ].join(" ")}
                     onClick={() => handleCardTap(pc.id)}
                   >
                     {pc.image_url ? (
