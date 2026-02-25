@@ -1,4 +1,4 @@
-"use client";
+""use client";
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -31,12 +31,7 @@ type Photocard = {
 const STATUS_ORDER: (Status | null)[] = [null, "prio", "otw", "owned"];
 
 // Sort grouping order (status-sort mode)
-const STATUS_SORT_ORDER: (Status | "Missing")[] = [
-  "owned",
-  "otw",
-  "prio",
-  "Missing",
-];
+const STATUS_SORT_ORDER: (Status | "Missing")[] = ["owned", "otw", "prio", "Missing"];
 
 export default function Home() {
   const router = useRouter();
@@ -61,9 +56,9 @@ export default function Home() {
   // Mobile: double-tap show PC name
   const [showNameFor, setShowNameFor] = useState<number | null>(null);
   const lastTapRef = useRef<Record<number, number>>({});
-  const singleTapTimerRef = useRef<
-    Record<number, ReturnType<typeof setTimeout>>
-  >({});
+  const singleTapTimerRef = useRef<Record<number, ReturnType<typeof setTimeout>>>(
+    {}
+  );
 
   // Hint banner (once per device)
   const [showHint, setShowHint] = useState(false);
@@ -80,10 +75,10 @@ export default function Home() {
   const [statusFilterOpen, setStatusFilterOpen] = useState(false);
   const statusFilterRef = useRef<HTMLDivElement | null>(null);
 
-  // Export (grid-only)
+  // Export
   const exportRef = useRef<HTMLDivElement | null>(null);
 
-  // Export mode (shrink ONLY for PNG)
+  // ✅ NEW (export-only state)
   const [isExporting, setIsExporting] = useState(false);
 
   // ----------------------------
@@ -409,43 +404,40 @@ export default function Home() {
   };
 
   // ----------------------------
-  // PNG DOWNLOAD (SHRINKS ONLY DURING EXPORT)
+  // PNG DOWNLOAD (REPLACES PDF)
   // ----------------------------
   const downloadPNG = async () => {
     setMenuOpen(false);
     setStatusFilterOpen(false);
     setStatusMenuFor(null);
 
-    const node = exportRef.current;
-    if (!node) return;
+    if (!exportRef.current) return;
 
-    // shrink UI only for capture
     setIsExporting(true);
 
-    // let React apply shrink + close menus
+    // Let React apply state changes (menus closing + export-only UI)
     await new Promise((r) => requestAnimationFrame(() => r(null)));
-    await new Promise((r) => setTimeout(r, 120));
+    await new Promise((r) => setTimeout(r, 300)); // ✅ longer delay (mobile)
 
-    // wait for images (but don’t block forever)
-    const imgs = Array.from(node.querySelectorAll("img")) as HTMLImageElement[];
-    const waitForImg = (img: HTMLImageElement) =>
-      new Promise<void>((resolve) => {
-        if (img.complete) return resolve();
-        const done = () => resolve();
-        img.addEventListener("load", done, { once: true });
-        img.addEventListener("error", done, { once: true });
-      });
-
-    await Promise.race([
-      Promise.all(imgs.map(waitForImg)),
-      new Promise<void>((resolve) => setTimeout(resolve, 5000)),
-    ]);
+    // Wait for images inside the export area
+    const imgs = Array.from(exportRef.current.querySelectorAll("img"));
+    await Promise.all(
+      imgs.map((img) => {
+        const i = img as HTMLImageElement;
+        if (i.complete && i.naturalWidth > 0) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          const done = () => resolve();
+          i.addEventListener("load", done, { once: true });
+          i.addEventListener("error", done, { once: true });
+        });
+      })
+    );
 
     try {
-      const dataUrl = await htmlToImage.toPng(node, {
+      const dataUrl = await htmlToImage.toPng(exportRef.current, {
         cacheBust: true,
         backgroundColor: "#F7F2EB",
-        pixelRatio: 1, // keep stable
+        pixelRatio: 1, // ✅ keep stable esp. mobile
         skipFonts: true,
         imagePlaceholder:
           "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQImWNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==",
@@ -456,13 +448,10 @@ export default function Home() {
       link.download = "alpha-drive-one-collection.png";
       link.href = dataUrl;
       link.click();
-    } catch (err) {
+    } catch (err: any) {
       console.error("PNG export failed:", err);
-      alert(
-        "PNG export failed. With 500 cards, it may still be too large. Try filtering down or we can export in multiple parts."
-      );
+      alert("PNG export failed. Try again.");
     } finally {
-      // restore normal UI
       setIsExporting(false);
     }
   };
@@ -548,6 +537,14 @@ export default function Home() {
     });
   })();
 
+  // ✅ NEW: SAFE EXPORT AUTO-ADAPTIVE COLUMNS (based on visible count)
+  const exportColumnClass = (() => {
+    const count = visiblePCs.length;
+    if (count < 150) return "grid-cols-12 md:grid-cols-14";
+    if (count < 300) return "grid-cols-16 md:grid-cols-18";
+    return "grid-cols-20 md:grid-cols-24";
+  })();
+
   const activeFiltersLabel = (() => {
     const parts: string[] = [];
 
@@ -588,6 +585,12 @@ export default function Home() {
       return next;
     });
   };
+
+  // ✅ NEW: Export header text (members only, cute font in JSX)
+  const exportHeaderText = (() => {
+    if (selectedMembers.length > 0) return selectedMembers.join(", ");
+    return "All Members";
+  })();
 
   return (
     <main className="min-h-screen bg-[#F7F2EB] text-[#4A3F35] px-3 py-4">
@@ -720,9 +723,10 @@ export default function Home() {
 
       {/* Filters row + Reset button */}
       <section className="mb-6 flex flex-col gap-2 print:hidden">
-        <div className="flex gap-2 items-center">
+        {/* ✅ CHANGED: 2 rows on mobile only (grid), unchanged on md+ (flex) */}
+        <div className="grid grid-cols-2 gap-2 items-center md:flex md:gap-2">
           <select
-            className="flex-1 rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
+            className="w-full md:flex-1 rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
             value={selectedEra}
             onChange={(e) => setSelectedEra(e.target.value)}
           >
@@ -733,7 +737,7 @@ export default function Home() {
           </select>
 
           <select
-            className="flex-1 rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
+            className="w-full md:flex-1 rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
             value={selectedType}
             onChange={(e) => setSelectedType(e.target.value)}
           >
@@ -746,7 +750,7 @@ export default function Home() {
           </select>
 
           {/* Multi-status filter dropdown */}
-          <div className="flex-1 relative" ref={statusFilterRef}>
+          <div className="w-full md:flex-1 relative" ref={statusFilterRef}>
             <button
               onClick={() => setStatusFilterOpen((v) => !v)}
               className="w-full rounded-md bg-[#EFE6DA] px-3 py-2 text-sm text-left"
@@ -817,19 +821,18 @@ export default function Home() {
 
           {/* Sort control */}
           <select
-            className="flex-1 rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
+            className="w-full md:flex-1 rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
             value={sortMode}
-            onChange={(e) =>
-              setSortMode(e.target.value as "default" | "status")
-            }
+            onChange={(e) => setSortMode(e.target.value as "default" | "status")}
           >
             <option value="default">Sort: Default</option>
             <option value="status">Sort: Status</option>
           </select>
 
+          {/* ✅ CHANGED: reset spans both columns on mobile only */}
           <button
             onClick={resetFilters}
-            className="shrink-0 rounded-md bg-[#C8B6A6] px-3 py-2 text-sm font-medium shadow-sm hover:opacity-90"
+            className="col-span-2 md:col-auto shrink-0 rounded-md bg-[#C8B6A6] px-3 py-2 text-sm font-medium shadow-sm hover:opacity-90"
           >
             Reset
           </button>
@@ -868,13 +871,32 @@ export default function Home() {
       {loading ? (
         <p className="text-center text-sm opacity-60">Loading photocards…</p>
       ) : (
-        <div ref={exportRef}>
+        // ✅ CHANGED: scale only during export
+        <div
+          ref={exportRef}
+          style={
+            isExporting
+              ? { transform: "scale(0.9)", transformOrigin: "top left" }
+              : undefined
+          }
+        >
+          {/* ✅ CHANGED: export header only during export */}
+          {isExporting && (
+            <div className="mb-2 text-center" style={{ fontFamily: "cursive" }}>
+              <div className="text-xl font-semibold">
+                Alpha Drive One Collection
+              </div>
+              <div className="text-sm opacity-70">{exportHeaderText}</div>
+            </div>
+          )}
+
           <section
             className={[
-              "grid gap-2 print:grid-cols-10 print:gap-1",
+              "grid print:grid-cols-10 print:gap-1",
+              // ✅ CHANGED: auto-adaptive export columns ONLY during export
               isExporting
-                ? "grid-cols-8 md:grid-cols-12 gap-1" // ✅ smaller ONLY during export
-                : "grid-cols-4 md:grid-cols-8",
+                ? `${exportColumnClass} gap-1`
+                : "grid-cols-4 md:grid-cols-8 gap-2",
             ].join(" ")}
           >
             {visiblePCs.map((pc) => {
@@ -884,10 +906,7 @@ export default function Home() {
               return (
                 <div key={pc.id} className="relative">
                   <button
-                    className={[
-                      "group relative rounded-lg bg-[#EFE6DA] overflow-hidden print:rounded-md w-full",
-                      isExporting ? "aspect-[2.8/4]" : "aspect-[2.8/4]", // keep aspect
-                    ].join(" ")}
+                    className="group relative aspect-[2.8/4] rounded-lg bg-[#EFE6DA] overflow-hidden print:rounded-md w-full"
                     onClick={() => handleCardTap(pc.id)}
                   >
                     {pc.image_url ? (
@@ -909,7 +928,12 @@ export default function Home() {
 
                     {status && (
                       <span
-                        className={`absolute top-1 right-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white ${
+                        className={`absolute top-1 right-1 rounded-full font-semibold text-white ${
+                          // ✅ CHANGED: badge smaller only during export
+                          isExporting
+                            ? "px-1.5 py-0 text-[8px]"
+                            : "px-2 py-0.5 text-[10px]"
+                        } ${
                           status === "owned"
                             ? "bg-green-600"
                             : status === "otw"
@@ -926,9 +950,7 @@ export default function Home() {
                         className={[
                           "absolute bottom-0 w-full bg-black/60 px-1 py-0.5 text-[10px] text-white text-center",
                           "md:opacity-0 md:group-hover:opacity-100 md:transition-opacity",
-                          showMobileName
-                            ? "opacity-100"
-                            : "opacity-0 md:opacity-0",
+                          showMobileName ? "opacity-100" : "opacity-0 md:opacity-0",
                         ].join(" ")}
                       >
                         {pc.pc_name}
