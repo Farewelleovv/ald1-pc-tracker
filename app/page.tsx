@@ -423,52 +423,70 @@ export default function Home() {
     await new Promise((r) => requestAnimationFrame(() => r(null)));
     await new Promise((r) => setTimeout(r, 300)); // ✅ longer delay (mobile)
 
-    // Wait for fonts to be ready (prevents iOS capturing before fonts paint)
+    // Wait for fonts to be ready
     // @ts-ignore
     if (document.fonts?.ready) {
       // @ts-ignore
       await document.fonts.ready;
     }
 
-    // Wait for images inside the export area + force anonymous CORS + decode for Safari
+    // Wait for images inside the export area (normal load)
     const imgs = Array.from(exportRef.current.querySelectorAll("img"));
     await Promise.all(
-      imgs.map(async (img) => {
+      imgs.map((img) => {
         const i = img as HTMLImageElement;
-
-        // ensure anonymous CORS (important for iOS canvas capture)
-        try {
-          i.crossOrigin = "anonymous";
-        } catch {}
-
-        if (!(i.complete && i.naturalWidth > 0)) {
-          await new Promise<void>((resolve) => {
-            const done = () => resolve();
-            i.addEventListener("load", done, { once: true });
-            i.addEventListener("error", done, { once: true });
-          });
-        }
-
-        // @ts-ignore
-        if (i.decode) {
-          try {
-            // @ts-ignore
-            await i.decode();
-          } catch {
-            // ignore decode failures
-          }
-        }
+        if (i.complete && i.naturalWidth > 0) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          const done = () => resolve();
+          i.addEventListener("load", done, { once: true });
+          i.addEventListener("error", done, { once: true });
+        });
       })
     );
 
+    // ✅ NEW: inline all images as data URLs for export (fixes iOS missing images + CORS)
+    const originalSrc = new Map<HTMLImageElement, string>();
     try {
+      await Promise.all(
+        imgs.map(async (img) => {
+          const i = img as HTMLImageElement;
+          if (!i.src) return;
+
+          originalSrc.set(i, i.src);
+
+          try {
+            const resp = await fetch(i.src, { mode: "cors", credentials: "omit" });
+            if (!resp.ok) return;
+
+            const blob = await resp.blob();
+            const dataUrl = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(String(reader.result));
+              reader.readAsDataURL(blob);
+            });
+
+            i.src = dataUrl;
+
+            // @ts-ignore
+            if (i.decode) {
+              try {
+                // @ts-ignore
+                await i.decode();
+              } catch {}
+            }
+          } catch {
+            // if one image fails to inline, we keep going
+          }
+        })
+      );
+
       const ratio = isIOS ? 2 : Math.min(3, window.devicePixelRatio || 1);
 
       const dataUrl = await htmlToImage.toPng(exportRef.current, {
         cacheBust: true,
         backgroundColor: "#F7F2EB",
-        pixelRatio: ratio, // ✅ higher-res exports, capped for iOS stability
-        skipFonts: false, // ✅ allow fonts; we wait for fonts above
+        pixelRatio: ratio,
+        skipFonts: false,
         imagePlaceholder:
           "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQImWNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==",
         fetchRequestInit: { mode: "cors", credentials: "omit" } as RequestInit,
@@ -482,6 +500,11 @@ export default function Home() {
       console.error("PNG export failed:", err);
       alert("PNG export failed. Try again.");
     } finally {
+      // ✅ restore original image URLs after export
+      originalSrc.forEach((src, img) => {
+        img.src = src;
+      });
+
       setIsExporting(false);
     }
   };
@@ -944,7 +967,6 @@ export default function Home() {
                         src={pc.image_url}
                         alt={pc.pc_name ?? pc.member}
                         className="h-full w-full object-cover"
-                        crossOrigin="anonymous"
                         loading="eager"
                         decoding="async"
                       />
