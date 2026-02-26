@@ -30,12 +30,7 @@ type Photocard = {
 const STATUS_ORDER: (Status | null)[] = [null, "prio", "otw", "owned"];
 
 // Sort grouping order (status-sort mode)
-const STATUS_SORT_ORDER: (Status | "Missing")[] = [
-  "owned",
-  "otw",
-  "prio",
-  "Missing",
-];
+const STATUS_SORT_ORDER: (Status | "Missing")[] = ["owned", "otw", "prio", "Missing"];
 
 export default function Home() {
   const router = useRouter();
@@ -60,9 +55,9 @@ export default function Home() {
   // Mobile: double-tap show PC name
   const [showNameFor, setShowNameFor] = useState<number | null>(null);
   const lastTapRef = useRef<Record<number, number>>({});
-  const singleTapTimerRef = useRef<
-    Record<number, ReturnType<typeof setTimeout>>
-  >({});
+  const singleTapTimerRef = useRef<Record<number, ReturnType<typeof setTimeout>>>(
+    {}
+  );
 
   // Hint banner (once per device)
   const [showHint, setShowHint] = useState(false);
@@ -368,7 +363,6 @@ export default function Home() {
 
     // DOUBLE TAP: show name only
     if (now - last < 300) {
-      // cancel pending single-tap action
       const t = singleTapTimerRef.current[pcId];
       if (t) clearTimeout(t);
 
@@ -382,7 +376,6 @@ export default function Home() {
       return;
     }
 
-    // FIRST TAP: wait briefly to see if a second tap comes
     lastTapRef.current[pcId] = now;
 
     singleTapTimerRef.current[pcId] = setTimeout(() => {
@@ -392,7 +385,7 @@ export default function Home() {
   };
 
   // ----------------------------
-  // RESET FILTERS (BUTTON ON FILTER ROW)
+  // RESET FILTERS
   // ----------------------------
   const resetFilters = () => {
     setSelectedMembers([]);
@@ -408,11 +401,7 @@ export default function Home() {
   };
 
   // ----------------------------
-  // PNG DOWNLOAD (REPLACES PDF)
-  // ✅ html2canvas capture
-  // ✅ Fixes Safari export by:
-  //    - proxying images to same-origin /api/img inside CLONE
-  //    - sanitizing ANY oklab/oklch/color-mix(in oklab...) strings inside CLONE
+  // PNG DOWNLOAD
   // ----------------------------
   const downloadPNG = async () => {
     setMenuOpen(false);
@@ -423,33 +412,64 @@ export default function Home() {
 
     setIsExporting(true);
 
-    // Let React apply state changes
     await new Promise((r) => requestAnimationFrame(() => r(null)));
     await new Promise((r) => setTimeout(r, 350));
 
-    // Wait for fonts
     // @ts-ignore
     if (document.fonts?.ready) {
       // @ts-ignore
       await document.fonts.ready;
     }
 
-    const node = exportRef.current;
+    const root = exportRef.current;
+    if (!root) {
+      setIsExporting(false);
+      return;
+    }
 
-    // Give the export root a temporary id so we can find it in html2canvas's cloned DOM
-    const prevId = node.id;
-    const exportId =
-      prevId || `export-root-${Math.random().toString(36).slice(2)}`;
-    node.id = exportId;
+    const changedImgSrc = new Map<HTMLImageElement, string | null>();
 
     try {
+      // Proxy images to same-origin /api/img (Safari-safe)
+      const imgs = Array.from(root.querySelectorAll("img")) as HTMLImageElement[];
+      for (const img of imgs) {
+        if (!img.src) continue;
+        changedImgSrc.set(img, img.src);
+        img.src = `${window.location.origin}/api/img?url=${encodeURIComponent(img.src)}`;
+        try {
+          img.crossOrigin = "anonymous";
+        } catch {}
+      }
+
+      await Promise.all(
+        imgs.map((i) => {
+          if (i.complete && i.naturalWidth > 0) return Promise.resolve();
+          return new Promise<void>((resolve) => {
+            const done = () => resolve();
+            i.addEventListener("load", done, { once: true });
+            i.addEventListener("error", done, { once: true });
+          });
+        })
+      );
+
       const html2canvas = (await import("html2canvas")).default;
 
-      const scale = Math.min(2, window.devicePixelRatio || 1);
+      // ✅ SAFE SCALE CLAMP
+      const MAX = 16000;
+      const w = root.scrollWidth;
+      const h = root.scrollHeight;
+      const dpr = window.devicePixelRatio || 1;
 
-      const canvas = await html2canvas(node, {
-        backgroundColor: "#F7F2EB",
-        scale,
+      const safeScale = Math.max(
+        0.25,
+        Math.min(2, dpr, MAX / Math.max(1, w), MAX / Math.max(1, h))
+      );
+
+      console.log("Export size:", w, h, "safeScale:", safeScale);
+
+      const canvas = await html2canvas(root, {
+        background: "#F7F2EB",
+        scale: safeScale,
         useCORS: true,
         allowTaint: false,
         logging: false,
@@ -457,155 +477,22 @@ export default function Home() {
         scrollY: -window.scrollY,
         windowWidth: document.documentElement.clientWidth,
         windowHeight: document.documentElement.clientHeight,
-
-        onclone: (clonedDoc) => {
-          const root = clonedDoc.getElementById(exportId) as HTMLElement | null;
-          if (!root) return;
-
-          const view = clonedDoc.defaultView;
-          if (!view) return;
-
-          // Canvas for color normalization (Safari can parse oklab/oklch -> rgb)
-          const c = clonedDoc.createElement("canvas");
-          const ctx = c.getContext("2d");
-
-          const toRgb = (value: string) => {
-            if (!ctx) return value;
-            try {
-              ctx.fillStyle = "#000";
-              ctx.fillStyle = value;
-              return String(ctx.fillStyle);
-            } catch {
-              return value;
-            }
-          };
-
-          const sanitizeColorString = (s: string) => {
-            let out = s;
-
-            // Replace any oklab()/oklch() chunks with rgb equivalents
-            out = out.replace(/okl(?:ab|ch)\([^)]*\)/g, (match) => toRgb(match));
-
-            // html2canvas also chokes on color-mix(in oklab, ...)
-            // We replace the entire color-mix(...) with a safe fallback.
-            // (Export-only. Your UI stays unchanged.)
-            out = out.replace(/color-mix\([^)]*\)/g, () => "#000");
-
-            // Sometimes "in oklab" appears in other funcs; keep it safe
-            out = out.replace(/\bin\s+oklab\b/g, "in srgb");
-
-            return out;
-          };
-
-          // Big list: html2canvas can touch MANY style props during capture
-          const propsToFix: Array<keyof CSSStyleDeclaration> = [
-            "color",
-            "backgroundColor",
-            "borderTopColor",
-            "borderRightColor",
-            "borderBottomColor",
-            "borderLeftColor",
-            "outlineColor",
-            "textDecorationColor",
-            "caretColor",
-            "columnRuleColor",
-            "fill",
-            "stroke",
-            "stopColor",
-            "floodColor",
-            "lightingColor",
-            // compound strings that can contain colors
-            "background",
-            "borderTop",
-            "borderRight",
-            "borderBottom",
-            "borderLeft",
-            "border",
-            "outline",
-            "boxShadow",
-            // textShadow isn't in TS lib type sometimes; set via any below
-          ];
-
-          const all = [
-            root,
-            ...Array.from(root.querySelectorAll<HTMLElement>("*")),
-          ];
-
-          for (const el of all) {
-            const cs = view.getComputedStyle(el);
-
-            for (const prop of propsToFix) {
-              const v = (cs as any)[prop] as string | undefined;
-              if (!v) continue;
-
-              if (
-                !v.includes("oklab(") &&
-                !v.includes("oklch(") &&
-                !v.includes("color-mix(") &&
-                !v.includes("in oklab")
-              ) {
-                continue;
-              }
-
-              const fixed = sanitizeColorString(v);
-
-              try {
-                (el.style as any)[prop] = fixed;
-              } catch {
-                // ignore
-              }
-            }
-
-            // textShadow can contain colors; sanitize via generic setProperty
-            try {
-              const ts = cs.getPropertyValue("text-shadow");
-              if (
-                ts &&
-                (ts.includes("oklab(") ||
-                  ts.includes("oklch(") ||
-                  ts.includes("color-mix(") ||
-                  ts.includes("in oklab"))
-              ) {
-                el.style.setProperty("text-shadow", sanitizeColorString(ts));
-              }
-            } catch {
-              // ignore
-            }
-          }
-
-          // Proxy images to SAME-ORIGIN in the CLONE
-          const imgs = Array.from(
-            root.querySelectorAll("img")
-          ) as HTMLImageElement[];
-
-          for (const img of imgs) {
-            if (!img.src) continue;
-
-            const proxied = `${window.location.origin}/api/img?url=${encodeURIComponent(
-              img.src
-            )}`;
-            img.src = proxied;
-
-            try {
-              img.crossOrigin = "anonymous";
-            } catch {
-              // ignore
-            }
-          }
-        },
-      });
+      } as any);
 
       const dataUrl = canvas.toDataURL("image/png");
-
       const link = document.createElement("a");
       link.download = "alpha-drive-one-collection.png";
       link.href = dataUrl;
       link.click();
     } catch (err: any) {
       console.error("PNG export failed:", err);
-      alert("PNG export failed. Try again.");
+      alert(`PNG export failed: ${err?.message ?? String(err)}`);
     } finally {
-      node.id = prevId;
+      changedImgSrc.forEach((src, img) => {
+        if (src === null) img.removeAttribute("src");
+        else img.src = src;
+      });
+
       setIsExporting(false);
     }
   };
@@ -625,7 +512,6 @@ export default function Home() {
     if (era) setSelectedEra(era);
     if (type) setSelectedType(type);
 
-    // status can be comma-separated for multi-select now
     if (status) {
       const list = status.split(",").filter(Boolean);
       setSelectedStatuses(list.length ? list : ["All"]);
@@ -644,7 +530,6 @@ export default function Home() {
     if (selectedEra !== "All" && pc.era !== selectedEra) return false;
     if (selectedType !== "All" && pc.type !== selectedType) return false;
 
-    // Multi status filter
     if (!selectedStatuses.includes("All")) {
       const status = pcStatus[pc.id] ?? null;
 
@@ -666,8 +551,7 @@ export default function Home() {
   });
 
   // ----------------------------
-  // SORTING (OPTIONAL)
-  // Respects original order_sort by using the current order as tie-breaker.
+  // SORTING
   // ----------------------------
   const visiblePCs = (() => {
     if (sortMode === "default") return visiblePCsUnsorted;
@@ -686,12 +570,11 @@ export default function Home() {
       const ra = rank(a.id);
       const rb = rank(b.id);
       if (ra !== rb) return ra - rb;
-      // preserve original ordering within the same status group
       return (originalIndex.get(a.id) ?? 0) - (originalIndex.get(b.id) ?? 0);
     });
   })();
 
-  // ✅ NEW: SAFE EXPORT AUTO-ADAPTIVE COLUMNS (based on visible count)
+  // ✅ NEW: SAFE EXPORT AUTO-ADAPTIVE COLUMNS
   const exportColumnClass = (() => {
     const count = visiblePCs.length;
     if (count < 150) return "grid-cols-12 md:grid-cols-14";
@@ -721,10 +604,8 @@ export default function Home() {
 
   const toggleStatusFilterValue = (val: string) => {
     setSelectedStatuses((prev) => {
-      // If clicking All -> set only All
       if (val === "All") return ["All"];
 
-      // Remove All if present
       let next = prev.includes("All") ? [] : [...prev];
 
       if (next.includes(val)) {
@@ -733,14 +614,13 @@ export default function Home() {
         next.push(val);
       }
 
-      // If nothing selected, fall back to All
       if (next.length === 0) return ["All"];
 
       return next;
     });
   };
 
-  // ✅ NEW: Export header text (members only, cute font in JSX)
+  // ✅ NEW: Export header text
   const exportHeaderText = (() => {
     if (selectedMembers.length > 0) return selectedMembers.join(", ");
     return "All Members";
@@ -902,6 +782,7 @@ export default function Home() {
             <option value="Other">Other</option>
           </select>
 
+          {/* Multi-status filter dropdown */}
           <div className="w-full md:flex-1 relative" ref={statusFilterRef}>
             <button
               onClick={() => setStatusFilterOpen((v) => !v)}
@@ -971,17 +852,17 @@ export default function Home() {
             )}
           </div>
 
+          {/* Sort control */}
           <select
             className="w-full md:flex-1 rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
             value={sortMode}
-            onChange={(e) =>
-              setSortMode(e.target.value as "default" | "status")
-            }
+            onChange={(e) => setSortMode(e.target.value as "default" | "status")}
           >
             <option value="default">Sort: Default</option>
             <option value="status">Sort: Status</option>
           </select>
 
+          {/* Reset */}
           <button
             onClick={resetFilters}
             className="col-span-2 md:col-auto shrink-0 rounded-md bg-[#C8B6A6] px-3 py-2 text-sm font-medium shadow-sm hover:opacity-90"
@@ -1072,22 +953,23 @@ export default function Home() {
                       </div>
                     )}
 
+                    {/* ✅ was bg-black/30 (oklab); now explicit rgba */}
                     {status !== "owned" && (
-                      <div className="absolute inset-0 bg-black/30" />
+                      <div className="absolute inset-0 bg-[rgba(0,0,0,0.30)]" />
                     )}
 
                     {status && (
                       <span
-                        className={`absolute top-1 right-1 rounded-full font-semibold text-white ${
+                        className={`absolute top-1 right-1 rounded-full font-semibold text-[#ffffff] ${
                           isExporting
                             ? "px-1.5 py-0 text-[8px]"
                             : "px-2 py-0.5 text-[10px]"
                         } ${
                           status === "owned"
-                            ? "bg-green-600"
+                            ? "bg-[#16a34a]"
                             : status === "otw"
-                            ? "bg-blue-500"
-                            : "bg-pink-500"
+                            ? "bg-[#3b82f6]"
+                            : "bg-[#ec4899]"
                         }`}
                       >
                         {status.toUpperCase()}
@@ -1097,11 +979,10 @@ export default function Home() {
                     {pc.pc_name && (
                       <div
                         className={[
-                          "absolute bottom-0 w-full bg-black/60 px-1 py-0.5 text-[10px] text-white text-center",
+                          // ✅ was bg-black/60 (oklab); now explicit rgba
+                          "absolute bottom-0 w-full bg-[rgba(0,0,0,0.60)] px-1 py-0.5 text-[10px] text-[#ffffff] text-center",
                           "md:opacity-0 md:group-hover:opacity-100 md:transition-opacity",
-                          showMobileName
-                            ? "opacity-100"
-                            : "opacity-0 md:opacity-0",
+                          showMobileName ? "opacity-100" : "opacity-0 md:opacity-0",
                         ].join(" ")}
                       >
                         {pc.pc_name}
