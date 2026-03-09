@@ -12,6 +12,7 @@ type PendingPhotocard = {
   era: string | null;
   type: string | null;
   pc_name: string | null;
+  sort_order: number | null;
   image_path: string | null;
   created_at: string;
 };
@@ -106,17 +107,18 @@ export default function AdminPendingPage() {
 
     try {
       const imageUrl = supabase.storage
-        .from("pc-images")
+        .from("poca-images")
         .getPublicUrl(row.image_path).data.publicUrl;
 
       const { error: insertError } = await supabase.from("photocards").insert({
-        member: row.member,
-        era: row.era,
-        type: row.type,
-        pc_name: row.pc_name,
-        image_path: row.image_path,
-        image_url: imageUrl,
-      });
+  member: row.member,
+  era: row.era,
+  type: row.type,
+  pc_name: row.pc_name,
+  sort_order: row.sort_order,
+  image_path: row.image_path,
+  image_url: imageUrl,
+});
 
       if (insertError) {
         throw new Error(`Approve insert failed: ${insertError.message}`);
@@ -228,7 +230,7 @@ export default function AdminPendingPage() {
               {rows.map((row) => {
                 const imageUrl = row.image_path
                   ? supabase.storage
-                      .from("pc-images")
+                      .from("poca-images")
                       .getPublicUrl(row.image_path).data.publicUrl
                   : "";
 
