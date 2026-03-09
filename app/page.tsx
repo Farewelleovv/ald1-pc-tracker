@@ -24,12 +24,12 @@ type Photocard = {
   era: string | null;
   type: string | null;
   image_url: string | null;
+  image_path: string | null;
   pc_name: string | null;
 };
 
 const STATUS_ORDER: (Status | null)[] = [null, "prio", "otw", "owned"];
 
-// Sort grouping order (status-sort mode)
 const STATUS_SORT_ORDER: (Status | "Missing")[] = ["owned", "otw", "prio", "Missing"];
 
 export default function Home() {
@@ -46,43 +46,32 @@ export default function Home() {
   const [selectedEra, setSelectedEra] = useState("All");
   const [selectedType, setSelectedType] = useState("All");
 
-  // Status filter: multi-select
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>(["All"]);
 
-  // Sort mode
   const [sortMode, setSortMode] = useState<"default" | "status">("default");
 
-  // Mobile: double-tap show PC name
   const [showNameFor, setShowNameFor] = useState<number | null>(null);
   const lastTapRef = useRef<Record<number, number>>({});
   const singleTapTimerRef = useRef<Record<number, ReturnType<typeof setTimeout>>>(
     {}
   );
 
-  // Hint banner (once per device)
   const [showHint, setShowHint] = useState(false);
 
-  // Menu
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  // Status dropdown per card
   const [statusMenuFor, setStatusMenuFor] = useState<number | null>(null);
   const statusMenuRef = useRef<HTMLDivElement | null>(null);
 
-  // Status filter dropdown
   const [statusFilterOpen, setStatusFilterOpen] = useState(false);
   const statusFilterRef = useRef<HTMLDivElement | null>(null);
 
-  // Export
   const exportRef = useRef<HTMLDivElement | null>(null);
 
-  // ✅ NEW (export-only state)
   const [isExporting, setIsExporting] = useState(false);
 
-  // ----------------------------
-  // AUTH SESSION
-  // ----------------------------
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       const u = data.session?.user ?? null;
@@ -101,9 +90,7 @@ export default function Home() {
     };
   }, []);
 
-  // ----------------------------
-  // MENU: CLOSE ON OUTSIDE CLICK
-  // ----------------------------
+
   useEffect(() => {
     const onDown = (e: MouseEvent | TouchEvent) => {
       if (!menuRef.current) return;
@@ -120,9 +107,7 @@ export default function Home() {
     };
   }, []);
 
-  // ----------------------------
-  // STATUS MENU: CLOSE ON OUTSIDE CLICK
-  // ----------------------------
+
   useEffect(() => {
     const onDown = (e: MouseEvent | TouchEvent) => {
       if (statusMenuFor === null) return;
@@ -140,9 +125,7 @@ export default function Home() {
     };
   }, [statusMenuFor]);
 
-  // ----------------------------
-  // STATUS FILTER: CLOSE ON OUTSIDE CLICK
-  // ----------------------------
+
   useEffect(() => {
     const onDown = (e: MouseEvent | TouchEvent) => {
       if (!statusFilterRef.current) return;
@@ -159,15 +142,13 @@ export default function Home() {
     };
   }, []);
 
-  // ----------------------------
-  // HINT (ONCE PER DEVICE)
-  // ----------------------------
+
   useEffect(() => {
     try {
       const dismissed = localStorage.getItem("ald1_hint_dismissed");
       if (!dismissed) setShowHint(true);
     } catch {
-      // ignore
+
     }
   }, []);
 
@@ -176,13 +157,9 @@ export default function Home() {
     try {
       localStorage.setItem("ald1_hint_dismissed", "1");
     } catch {
-      // ignore
     }
   };
 
-  // ----------------------------
-  // FETCH PHOTOCARDS (PUBLIC)
-  // ----------------------------
   useEffect(() => {
     const fetchPCs = async () => {
       const { data, error } = await supabase
@@ -200,9 +177,6 @@ export default function Home() {
     fetchPCs();
   }, []);
 
-  // ----------------------------
-  // FETCH STATUSES (ONLY IF LOGGED IN)
-  // ----------------------------
   useEffect(() => {
     if (!userId) {
       setPcStatus({});
@@ -229,9 +203,7 @@ export default function Home() {
     fetchStatuses();
   }, [userId]);
 
-  // ----------------------------
-  // LOGIN / LOGOUT
-  // ----------------------------
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setPcStatus({});
@@ -246,9 +218,6 @@ export default function Home() {
     router.push("/login");
   };
 
-  // ----------------------------
-  // STATUS CYCLING
-  // ----------------------------
   const cycleStatus = async (pcId: number) => {
     if (!userId) {
       router.push("/login");
@@ -259,7 +228,6 @@ export default function Home() {
     const next =
       STATUS_ORDER[(STATUS_ORDER.indexOf(current) + 1) % STATUS_ORDER.length];
 
-    // DELETE when cycling back to null
     if (next === null) {
       const { error } = await supabase
         .from("user_pcs")
@@ -278,7 +246,6 @@ export default function Home() {
       return;
     }
 
-    // UPDATE first
     const { data: updated, error: updateError } = await supabase
       .from("user_pcs")
       .update({ status: next })
@@ -288,7 +255,6 @@ export default function Home() {
 
     if (updateError) console.error("Update error:", updateError);
 
-    // INSERT fallback
     if (!updated || updated.length === 0) {
       const { error: insertError } = await supabase.from("user_pcs").insert({
         user_id: userId,
@@ -302,16 +268,12 @@ export default function Home() {
     setPcStatus((prev) => ({ ...prev, [pcId]: next }));
   };
 
-  // ----------------------------
-  // SET STATUS (DROPDOWN ACTION)
-  // ----------------------------
   const setStatus = async (pcId: number, next: Status | null) => {
     if (!userId) {
       router.push("/login");
       return;
     }
 
-    // DELETE when setting to null (Missing/unmarked)
     if (next === null) {
       const { error } = await supabase
         .from("user_pcs")
@@ -330,7 +292,6 @@ export default function Home() {
       return;
     }
 
-    // UPDATE first
     const { data: updated, error: updateError } = await supabase
       .from("user_pcs")
       .update({ status: next })
@@ -340,7 +301,6 @@ export default function Home() {
 
     if (updateError) console.error("Update error:", updateError);
 
-    // INSERT fallback
     if (!updated || updated.length === 0) {
       const { error: insertError } = await supabase.from("user_pcs").insert({
         user_id: userId,
@@ -354,14 +314,10 @@ export default function Home() {
     setPcStatus((prev) => ({ ...prev, [pcId]: next }));
   };
 
-  // ----------------------------
-  // MOBILE: SINGLE TAP opens dropdown, DOUBLE TAP shows name
-  // ----------------------------
   const handleCardTap = (pcId: number) => {
     const now = Date.now();
     const last = lastTapRef.current[pcId] || 0;
 
-    // DOUBLE TAP: show name only
     if (now - last < 300) {
       const t = singleTapTimerRef.current[pcId];
       if (t) clearTimeout(t);
@@ -384,9 +340,6 @@ export default function Home() {
     }, 300);
   };
 
-  // ----------------------------
-  // RESET FILTERS
-  // ----------------------------
   const resetFilters = () => {
     setSelectedMembers([]);
     setSelectedEra("All");
@@ -400,9 +353,6 @@ export default function Home() {
     }
   };
 
-  // ----------------------------
-  // PNG DOWNLOAD
-  // ----------------------------
   const downloadPNG = async () => {
     setMenuOpen(false);
     setStatusFilterOpen(false);
@@ -415,9 +365,8 @@ export default function Home() {
     await new Promise((r) => requestAnimationFrame(() => r(null)));
     await new Promise((r) => setTimeout(r, 350));
 
-    // @ts-ignore
+
     if (document.fonts?.ready) {
-      // @ts-ignore
       await document.fonts.ready;
     }
 
@@ -430,7 +379,6 @@ export default function Home() {
     const changedImgSrc = new Map<HTMLImageElement, string | null>();
 
     try {
-      // Proxy images to same-origin /api/img (Safari-safe)
       const imgs = Array.from(root.querySelectorAll("img")) as HTMLImageElement[];
       for (const img of imgs) {
         if (!img.src) continue;
@@ -454,7 +402,6 @@ export default function Home() {
 
       const html2canvas = (await import("html2canvas")).default;
 
-      // ✅ SAFE SCALE CLAMP
       const MAX = 16000;
       const w = root.scrollWidth;
       const h = root.scrollHeight;
@@ -520,9 +467,6 @@ export default function Home() {
     if (sort === "status") setSortMode("status");
   }, []);
 
-  // ----------------------------
-  // FILTERING
-  // ----------------------------
   const visiblePCsUnsorted = pcs.filter((pc) => {
     if (selectedMembers.length > 0 && !selectedMembers.includes(pc.member))
       return false;
@@ -550,9 +494,6 @@ export default function Home() {
     return true;
   });
 
-  // ----------------------------
-  // SORTING
-  // ----------------------------
   const visiblePCs = (() => {
     if (sortMode === "default") return visiblePCsUnsorted;
 
@@ -574,7 +515,6 @@ export default function Home() {
     });
   })();
 
-  // ✅ NEW: SAFE EXPORT AUTO-ADAPTIVE COLUMNS
   const exportColumnClass = (() => {
     const count = visiblePCs.length;
     if (count < 150) return "grid-cols-12 md:grid-cols-14";
@@ -689,6 +629,31 @@ export default function Home() {
                   Log in
                 </button>
               )}
+              <div className="mt-6 border-t pt-4 text-sm text-gray-500">
+                <p className="mb-2 font-medium text-gray-700">Contact Support</p>
+
+                <div className="flex flex-col gap-1">
+                  <a
+                    href="mailto:ald1pctracker@gmail.com?subject=ALD1 PC Tracker Support"
+                    className="hover:underline"
+                  >
+                    Email
+                  </a>
+
+                  <a
+                    href="https://x.com/ald1pctracker"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:underline"
+                  >
+                    X (Twitter)
+                  </a>
+                </div>
+
+                <p className="mt-4 text-xs text-gray-400">
+                  Version v1.0
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -933,15 +898,21 @@ export default function Home() {
               const status = pcStatus[pc.id];
               const showMobileName = showNameFor === pc.id;
 
+              const imageUrl = pc.image_path
+                ? supabase.storage
+                    .from("poca-images")
+                    .getPublicUrl(pc.image_path).data.publicUrl
+                : pc.image_url;
+
               return (
                 <div key={pc.id} className="relative">
                   <button
                     className="group relative aspect-[2.8/4] rounded-lg bg-[#EFE6DA] overflow-hidden print:rounded-md w-full"
                     onClick={() => handleCardTap(pc.id)}
                   >
-                    {pc.image_url ? (
+                    {imageUrl ? (
                       <img
-                        src={pc.image_url}
+                        src={imageUrl}
                         alt={pc.pc_name ?? pc.member}
                         className="h-full w-full object-cover"
                         loading="eager"
@@ -953,7 +924,7 @@ export default function Home() {
                       </div>
                     )}
 
-                    {/* ✅ was bg-black/30 (oklab); now explicit rgba */}
+                    {/*  was bg-black/30 (oklab); now explicit rgba */}
                     {status !== "owned" && (
                       <div className="absolute inset-0 bg-[rgba(0,0,0,0.30)]" />
                     )}
@@ -979,7 +950,6 @@ export default function Home() {
                     {pc.pc_name && (
                       <div
                         className={[
-                          // ✅ was bg-black/60 (oklab); now explicit rgba
                           "absolute bottom-0 w-full bg-[rgba(0,0,0,0.60)] px-1 py-0.5 text-[10px] text-[#ffffff] text-center",
                           "md:opacity-0 md:group-hover:opacity-100 md:transition-opacity",
                           showMobileName ? "opacity-100" : "opacity-0 md:opacity-0",
