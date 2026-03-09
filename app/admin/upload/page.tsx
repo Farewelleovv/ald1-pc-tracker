@@ -24,6 +24,7 @@ type UploadState = {
   era: string;
   type: string;
   pc_name: string;
+  sort_order: string;
 };
 
 export default function AdminUploadPage() {
@@ -38,6 +39,7 @@ export default function AdminUploadPage() {
     era: "",
     type: "",
     pc_name: "",
+    sort_order: "",
   });
 
   const [submitting, setSubmitting] = useState(false);
@@ -52,7 +54,7 @@ export default function AdminUploadPage() {
     const safeEra = slugify(form.era || "unknown");
     const safeType = slugify(form.type || "unknown");
     const safePcName = slugify(form.pc_name || "pc");
-    const random = "abc12"; // preview only
+    const random = "abc12"; 
 
     return `${safeMember}/${safeEra}/${safeType}/${safePcName}-${random}.${ext}`;
   }, [file, form]);
@@ -105,6 +107,7 @@ export default function AdminUploadPage() {
       era: "",
       type: "",
       pc_name: "",
+      sort_order: "",
     });
   };
 
@@ -143,7 +146,7 @@ export default function AdminUploadPage() {
       const filePath = `${safeMember}/${safeEra}/${safeType}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from("pc-images")
+        .from("poca-images")
         .upload(filePath, file, {
           upsert: false,
           contentType: file.type || undefined,
@@ -154,14 +157,15 @@ export default function AdminUploadPage() {
       }
 
       const { error: insertError } = await supabase
-        .from("pending_photocards")
-        .insert({
-          member: form.member,
-          era: form.era.trim() || null,
-          type: form.type.trim() || null,
-          pc_name: form.pc_name.trim() || null,
-          image_path: filePath,
-        });
+  .from("pending_photocards")
+  .insert({
+    member: form.member,
+    era: form.era.trim() || null,
+    type: form.type.trim() || null,
+    pc_name: form.pc_name.trim() || null,
+    sort_order: form.sort_order.trim() ? Number(form.sort_order) : null,
+    image_path: filePath,
+  });
 
       if (insertError) {
         throw new Error(`Pending insert failed: ${insertError.message}`);
@@ -273,6 +277,16 @@ export default function AdminUploadPage() {
               className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
             />
           </div>
+          <div>
+  <label className="mb-2 block text-sm font-medium">Sort order</label>
+  <input
+    type="number"
+    value={form.sort_order}
+    onChange={(e) => handleChange("sort_order", e.target.value)}
+    placeholder="e.g. 120"
+    className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+  />
+</div>
 
           <div className="rounded-xl bg-white/70 p-4 text-sm">
             <p className="font-medium">Preview path</p>
