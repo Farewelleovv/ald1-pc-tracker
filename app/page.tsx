@@ -64,6 +64,8 @@ export default function Home() {
   const [statusMenuFor, setStatusMenuFor] = useState<number | null>(null);
   const statusMenuRef = useRef<HTMLDivElement | null>(null);
 
+  const [menuDirection, setMenuDirection] = useState<"up" | "down">("down");
+
   const [statusFilterOpen, setStatusFilterOpen] = useState(false);
   const statusFilterRef = useRef<HTMLDivElement | null>(null);
 
@@ -335,9 +337,24 @@ export default function Home() {
     lastTapRef.current[pcId] = now;
 
     singleTapTimerRef.current[pcId] = setTimeout(() => {
-      setStatusMenuFor((cur) => (cur === pcId ? null : pcId));
-      lastTapRef.current[pcId] = 0;
-    }, 300);
+
+  const el = document.getElementById(`pc-${pcId}`);
+
+  if (el) {
+    const rect = el.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+
+    if (spaceBelow < 220) {
+      setMenuDirection("up");
+    } else {
+      setMenuDirection("down");
+    }
+  }
+
+  setStatusMenuFor((cur) => (cur === pcId ? null : pcId));
+  lastTapRef.current[pcId] = 0;
+
+}, 300);
   };
 
   const resetFilters = () => {
@@ -905,7 +922,7 @@ export default function Home() {
                 : pc.image_url;
 
               return (
-                <div key={pc.id} className="relative">
+                <div key={pc.id} id={`pc-${pc.id}`} className="relative">
                   <button
                     className="group relative aspect-[2.8/4] rounded-lg bg-[#EFE6DA] overflow-hidden print:rounded-md w-full"
                     onClick={() => handleCardTap(pc.id)}
@@ -963,7 +980,11 @@ export default function Home() {
                   {statusMenuFor === pc.id && (
                     <div
                       ref={statusMenuRef}
-                      className="absolute left-1/2 -translate-x-1/2 mt-2 w-44 rounded-xl bg-[#EFE6DA] shadow-lg z-50 p-2 print:hidden"
+                      className={`absolute left-1/2 -translate-x-1/2 w-44 rounded-xl bg-[#EFE6DA] shadow-lg z-50 p-2 print:hidden ${
+                      menuDirection === "up"
+                        ? "bottom-full mb-2"
+                        : "top-full mt-2"
+                    }`}
                     >
                       <button
                         onClick={(e) => {
