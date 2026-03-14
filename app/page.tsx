@@ -730,7 +730,7 @@ export default function Home() {
           >
             <option value="All">All eras</option>
             <option value="Euphoria">Euphoria</option>
-            <option value="b2p">Boys 2 Planet</option>
+            
             <option value="Other">Other</option>
           </select>
 
