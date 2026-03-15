@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { getThumbnail } from "@/lib/getThumbnail";
 
 const MEMBERS = [
   "Leo",
@@ -915,11 +916,18 @@ export default function Home() {
               const status = pcStatus[pc.id];
               const showMobileName = showNameFor === pc.id;
 
-              const imageUrl = pc.image_path
+              const fullUrl = pc.image_path
+              ? supabase.storage
+                  .from("poca-images")
+                  .getPublicUrl(pc.image_path).data.publicUrl
+              : pc.image_url;
+
+            const thumbUrl =
+              pc.image_path && pc.image_path.endsWith(".webp")
                 ? supabase.storage
                     .from("poca-images")
-                    .getPublicUrl(pc.image_path).data.publicUrl
-                : pc.image_url;
+                    .getPublicUrl(getThumbnail(pc.image_path)).data.publicUrl
+                : fullUrl;
 
               return (
                 <div key={pc.id} id={`pc-${pc.id}`} className="relative">
@@ -927,14 +935,18 @@ export default function Home() {
                     className="group relative aspect-[2.8/4] rounded-lg bg-[#EFE6DA] overflow-hidden print:rounded-md w-full"
                     onClick={() => handleCardTap(pc.id)}
                   >
-                    {imageUrl ? (
+                    {fullUrl ? (
                       <img
-                        src={imageUrl}
-                        alt={pc.pc_name ?? pc.member}
-                        className="h-full w-full object-cover"
-                        loading="eager"
-                        decoding="async"
-                      />
+                    src={thumbUrl ?? fullUrl}
+                    alt={pc.pc_name ?? pc.member}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                    decoding="async"
+                    onError={(e) => {
+                      if (fullUrl) e.currentTarget.src = fullUrl;
+                    }}
+                  />
+
                     ) : (
                       <div className="flex h-full items-center justify-center text-xs opacity-60">
                         {pc.member}
