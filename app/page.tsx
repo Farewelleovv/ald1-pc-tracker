@@ -5,6 +5,57 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { getThumbnail } from "@/lib/getThumbnail";
 
+function LazyImage({
+  src,
+  fallback,
+  alt,
+}: {
+  src: string | null;
+  fallback: string | null;
+  alt: string;
+}) {
+  const ref = useRef<HTMLImageElement | null>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+
+    if (ref.current) observer.observe(ref.current);
+
+    return () => observer.disconnect();
+  }, []);
+
+  const actualSrc = visible ? src ?? fallback ?? undefined : undefined;
+
+  return (
+    <img
+      ref={ref}
+      src={actualSrc}
+      alt={alt}
+      className="h-full w-full object-cover"
+      loading="lazy"
+      decoding="async"
+      onError={(e) => {
+        if (fallback) e.currentTarget.src = fallback;
+      }}
+    />
+  );
+}
+
+
+
+const STORAGE_BASE =
+  "https://sclecamdibogqombkajj.supabase.co/storage/v1/object/public/poca-images/";
+
+
 const MEMBERS = [
   "Leo",
   "Junseo",
@@ -24,7 +75,6 @@ type Photocard = {
   member: string;
   era: string | null;
   type: string | null;
-  image_url: string | null;
   image_path: string | null;
   pc_name: string | null;
 };
@@ -917,17 +967,13 @@ export default function Home() {
               const showMobileName = showNameFor === pc.id;
 
               const fullUrl = pc.image_path
-              ? supabase.storage
-                  .from("poca-images")
-                  .getPublicUrl(pc.image_path).data.publicUrl
-              : pc.image_url;
+  ? STORAGE_BASE + pc.image_path
+  : null;
 
-            const thumbUrl =
-              pc.image_path && pc.image_path.endsWith(".webp")
-                ? supabase.storage
-                    .from("poca-images")
-                    .getPublicUrl(getThumbnail(pc.image_path)).data.publicUrl
-                : fullUrl;
+const thumbUrl = pc.image_path
+  ? STORAGE_BASE + getThumbnail(pc.image_path)
+  : null;
+
 
               return (
                 <div key={pc.id} id={`pc-${pc.id}`} className="relative">
@@ -936,16 +982,12 @@ export default function Home() {
                     onClick={() => handleCardTap(pc.id)}
                   >
                     {fullUrl ? (
-                      <img
-                    src={thumbUrl ?? fullUrl}
-                    alt={pc.pc_name ?? pc.member}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                    decoding="async"
-                    onError={(e) => {
-                      if (fullUrl) e.currentTarget.src = fullUrl;
-                    }}
-                  />
+                      <LazyImage
+  src={thumbUrl}
+  fallback={fullUrl}
+  alt={pc.pc_name ?? pc.member}
+/>
+
 
                     ) : (
                       <div className="flex h-full items-center justify-center text-xs opacity-60">
