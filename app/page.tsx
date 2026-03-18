@@ -89,6 +89,8 @@ export default function Home() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
+  const [search, setSearch] = useState("");
+
   const [pcs, setPcs] = useState<Photocard[]>([]);
   const [pcStatus, setPcStatus] = useState<Record<number, Status>>({});
   const [loading, setLoading] = useState(true);
@@ -555,12 +557,24 @@ export default function Home() {
       const matchesOtw = wantsOtw && status === "otw";
       const matchesOwned = wantsOwned && status === "owned";
 
-      if (!(matchesMissing || matchesPrio || matchesOtw || matchesOwned))
-        return false;
-    }
+          if (!(matchesMissing || matchesPrio || matchesOtw || matchesOwned))
+      return false;
+  }
 
-    return true;
-  });
+  // 🔎 SEARCH FILTER
+  if (search.trim() !== "") {
+    const q = search.toLowerCase();
+    const nameMatch = pc.pc_name?.toLowerCase().includes(q);
+    const memberMatch = pc.member?.toLowerCase().includes(q);
+    const eraMatch = pc.era?.toLowerCase().includes(q);
+    const typeMatch = pc.type?.toLowerCase().includes(q);
+
+    if (!(nameMatch || memberMatch || eraMatch || typeMatch)) return false;
+  }
+
+  return true;
+});
+
 
   const visiblePCs = (() => {
     if (sortMode === "default") return visiblePCsUnsorted;
@@ -697,6 +711,13 @@ export default function Home() {
                   Log in
                 </button>
               )}
+              <button
+  onClick={() => router.push("/stats")}
+  className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
+>
+  View statistics
+</button>
+
               <div className="mt-6 border-t pt-4 text-sm text-gray-500">
                 <p className="mb-2 font-medium text-gray-700">Contact Support</p>
 
@@ -787,6 +808,17 @@ export default function Home() {
           })}
         </div>
       </section>
+
+      {/* Search */}
+<section className="mb-3 print:hidden">
+  <input
+    type="text"
+    placeholder="Search photocards..."
+    value={search}
+    onChange={(e) => setSearch(e.target.value)}
+    className="w-full rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
+  />
+</section>
 
       {/* Filters row + Reset button */}
       <section className="mb-6 flex flex-col gap-2 print:hidden">
