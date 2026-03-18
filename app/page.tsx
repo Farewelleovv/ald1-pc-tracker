@@ -1,4 +1,4 @@
- "use client";
+"use client";
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -49,9 +49,6 @@ function LazyImage({
     />
   );
 }
-
-
-
 const STORAGE_BASE =
   "https://sclecamdibogqombkajj.supabase.co/storage/v1/object/public/poca-images/";
 
@@ -712,11 +709,11 @@ export default function Home() {
                 </button>
               )}
               <button
-  onClick={() => router.push("/stats")}
-  className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
->
-  View statistics
-</button>
+                onClick={() => router.push("/stats")}
+                className="w-full text-left rounded-lg px-3 py-2 text-sm hover:bg-[#E3DACF]"
+              >
+                View collection stats
+              </button>
 
               <div className="mt-6 border-t pt-4 text-sm text-gray-500">
                 <p className="mb-2 font-medium text-gray-700">Contact Support</p>
@@ -810,15 +807,15 @@ export default function Home() {
       </section>
 
       {/* Search */}
-<section className="mb-3 print:hidden">
-  <input
-    type="text"
-    placeholder="Search photocards..."
-    value={search}
-    onChange={(e) => setSearch(e.target.value)}
-    className="w-full rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
-  />
-</section>
+          <section className="mb-3 print:hidden">
+            <input
+              type="text"
+              placeholder="Search photocards..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-md bg-[#EFE6DA] px-3 py-2 text-sm"
+            />
+          </section>
 
       {/* Filters row + Reset button */}
       <section className="mb-6 flex flex-col gap-2 print:hidden">
