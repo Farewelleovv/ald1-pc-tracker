@@ -213,21 +213,31 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const fetchPCs = async () => {
-      const { data, error } = await supabase
-        .from("photocards")
-        .select("*")
-        .order("sort_order", { ascending: true })
-        .range(0, 9999);
+  const fetchPCs = async () => {
+    const { data, error, count } = await supabase
+      .from("photocards")
+      .select("*", { count: "exact" })
+      .order("sort_order", { ascending: true })
+      .range(0, 9999);
 
-      if (error) console.error("Photocards fetch error:", error);
-      if (data) setPcs(data);
+    console.log("COUNT:", count);
+    console.log("DATA LENGTH:", data?.length);
+    console.log("ERROR:", error);
 
-      setLoading(false);
-    };
+    if (error) {
+      console.error("Photocards fetch error:", error);
+    }
 
-    fetchPCs();
-  }, []);
+    if (data) {
+      console.log("SETTING PCS:", data.length);
+      setPcs(data);
+    }
+
+    setLoading(false);
+  };
+
+  fetchPCs();
+}, []);
 
   useEffect(() => {
     if (!userId) {
