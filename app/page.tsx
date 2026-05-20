@@ -74,6 +74,7 @@ type Photocard = {
   type: string | null;
   image_path: string | null;
   pc_name: string | null;
+  related_members?: string[]
 };
 
 const STATUS_ORDER: (Status | null)[] = [null, "prio", "otw", "owned"];
@@ -213,31 +214,21 @@ export default function Home() {
   };
 
   useEffect(() => {
-  const fetchPCs = async () => {
-    const { data, error, count } = await supabase
-      .from("photocards")
-      .select("*", { count: "exact" })
-      .order("sort_order", { ascending: true })
-      .range(0, 9999);
+    const fetchPCs = async () => {
+      const { data, error } = await supabase
+        .from("photocards")
+        .select("*")
+        .order("sort_order", { ascending: true })
+        .range(0, 9999);
 
-    console.log("COUNT:", count);
-    console.log("DATA LENGTH:", data?.length);
-    console.log("ERROR:", error);
+      if (error) console.error("Photocards fetch error:", error);
+      if (data) setPcs(data);
 
-    if (error) {
-      console.error("Photocards fetch error:", error);
-    }
+      setLoading(false);
+    };
 
-    if (data) {
-      console.log("SETTING PCS:", data.length);
-      setPcs(data);
-    }
-
-    setLoading(false);
-  };
-
-  fetchPCs();
-}, []);
+    fetchPCs();
+  }, []);
 
   useEffect(() => {
     if (!userId) {
@@ -545,8 +536,18 @@ export default function Home() {
   }, []);
 
   const visiblePCsUnsorted = pcs.filter((pc) => {
-    if (selectedMembers.length > 0 && !selectedMembers.includes(pc.member))
-      return false;
+    const relatedMembers = Array.isArray(pc.related_members)
+  ? pc.related_members
+  : [];
+
+if (
+  selectedMembers.length > 0 &&
+  !selectedMembers.includes(pc.member) &&
+  !relatedMembers.some((m: string) =>
+    selectedMembers.includes(m)
+  )
+)
+  return false;
 
     if (selectedEra !== "All" && pc.era !== selectedEra) return false;
     if (selectedType !== "All" && pc.type !== selectedType) return false;
@@ -837,7 +838,7 @@ export default function Home() {
           >
             <option value="All">All eras</option>
             <option value="Euphoria">Euphoria</option>
-            <option value="b2p">Boys Planet</option>
+            <option value="Boys Planet">b2p</option>
             <option value="Other">Other</option>
           </select>
 
