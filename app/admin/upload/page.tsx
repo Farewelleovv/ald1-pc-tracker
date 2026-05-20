@@ -45,6 +45,7 @@ export default function AdminUploadPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [relatedMembers, setRelatedMembers] = useState<string[]>([]);
 
   const previewPath = useMemo(() => {
     if (!file || !form.member) return "";
@@ -102,6 +103,7 @@ export default function AdminUploadPage() {
 
   const resetForm = () => {
     setFile(null);
+    setRelatedMembers([]);
     setForm({
       member: "",
       era: "",
@@ -165,6 +167,10 @@ export default function AdminUploadPage() {
     pc_name: form.pc_name.trim() || null,
     sort_order: form.sort_order.trim() ? Number(form.sort_order) : null,
     image_path: filePath,
+    related_members:
+  form.member === "Units"
+    ? relatedMembers
+    : null,
   });
 
       if (insertError) {
@@ -244,6 +250,36 @@ export default function AdminUploadPage() {
               ))}
             </select>
           </div>
+          {form.member === "Units" && (
+  <div>
+    <label className="mb-2 block text-sm font-medium">
+      Related members
+    </label>
+
+    <div className="flex flex-wrap gap-2">
+      {MEMBERS.filter((m) => m !== "Units").map((m) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() =>
+            setRelatedMembers((prev) =>
+              prev.includes(m)
+                ? prev.filter((x) => x !== m)
+                : [...prev, m]
+            )
+          }
+          className={`rounded-full px-3 py-1 text-sm ${
+            relatedMembers.includes(m)
+              ? "bg-[#C8B6A6] text-white"
+              : "bg-white border border-gray-300"
+          }`}
+        >
+          {m}
+        </button>
+      ))}
+    </div>
+  </div>
+)}
 
           <div>
             <label className="mb-2 block text-sm font-medium">Era</label>
