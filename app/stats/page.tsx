@@ -113,7 +113,6 @@ export default function StatsPage() {
       ? 0
       : Math.round(((stats.owned + stats.otw) / stats.total) * 100);
 
-  // MEMBER STATS (NOT affected by filters)
   const memberStats = MEMBERS.map((member) => {
     const memberPCs = pcs.filter((pc) => pc.member === member);
 
@@ -211,6 +210,7 @@ export default function StatsPage() {
           >
             <option value="All">All eras</option>
             <option value="Euphoria">Euphoria</option>
+            <option value="b2p">Boys 2 Planet</option>
             <option value="Other">Other</option>
           </select>
 
