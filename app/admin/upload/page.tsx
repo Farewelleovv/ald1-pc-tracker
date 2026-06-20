@@ -25,6 +25,7 @@ type UploadState = {
   type: string;
   pc_name: string;
   sort_order: string;
+  placeholder_label: string;
 };
 
 export default function AdminUploadPage() {
@@ -40,12 +41,14 @@ export default function AdminUploadPage() {
     type: "",
     pc_name: "",
     sort_order: "",
+    placeholder_label: "",
   });
 
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [relatedMembers, setRelatedMembers] = useState<string[]>([]);
+  const [isPlaceholder, setIsPlaceholder] = useState(false);
 
   const previewPath = useMemo(() => {
     if (!file || !form.member) return "";
@@ -104,12 +107,14 @@ export default function AdminUploadPage() {
   const resetForm = () => {
     setFile(null);
     setRelatedMembers([]);
+    setIsPlaceholder(false);
     setForm({
       member: "",
       era: "",
       type: "",
       pc_name: "",
       sort_order: "",
+      placeholder_label: "",
     });
   };
 
@@ -129,16 +134,20 @@ export default function AdminUploadPage() {
       return;
     }
 
-    if (!form.member.trim()) {
-      setErrorMessage("Member is required.");
-      return;
-    }
+    if (!isPlaceholder && !form.member.trim()) {
+  setErrorMessage("Member is required.");
+  return;
+}
 
     setSubmitting(true);
 
     try {
       const ext = file.name.split(".").pop()?.toLowerCase() || "png";
-      const safeMember = slugify(form.member || "unknown");
+      const safeMember = slugify(
+  isPlaceholder
+    ? "placeholder"
+    : form.member || "unknown"
+);
       const safeEra = slugify(form.era || "unknown");
       const safeType = slugify(form.type || "unknown");
       const safePcName = slugify(form.pc_name || "pc");
@@ -161,7 +170,12 @@ export default function AdminUploadPage() {
       const { error: insertError } = await supabase
   .from("pending_photocards")
   .insert({
-    member: form.member,
+    member: isPlaceholder ? "placeholder" : form.member,
+    is_placeholder: isPlaceholder,
+
+placeholder_label: isPlaceholder
+  ? form.placeholder_label.trim() || "Placeholder"
+  : null,
     era: form.era.trim() || null,
     type: form.type.trim() || null,
     pc_name: form.pc_name.trim() || null,
@@ -235,22 +249,57 @@ export default function AdminUploadPage() {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium">Member *</label>
-            <select
-              value={form.member}
-              onChange={(e) => handleChange("member", e.target.value)}
-              className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-              required
-            >
-              <option value="">Select member</option>
-              {MEMBERS.map((member) => (
-                <option key={member} value={member}>
-                  {member}
-                </option>
-              ))}
-            </select>
-          </div>
-          {form.member === "Units" && (
+  <label className="flex items-center gap-2 text-sm font-medium">
+    <input
+      type="checkbox"
+      checked={isPlaceholder}
+      onChange={(e) => setIsPlaceholder(e.target.checked)}
+    />
+    Placeholder Card
+  </label>
+</div>
+
+          {!isPlaceholder && (
+  <div>
+    <label className="mb-2 block text-sm font-medium">
+      Member *
+    </label>
+
+    <select
+      value={form.member}
+      onChange={(e) => handleChange("member", e.target.value)}
+      className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+      required={!isPlaceholder}
+    >
+      <option value="">Select member</option>
+
+      {MEMBERS.map((member) => (
+        <option key={member} value={member}>
+          {member}
+        </option>
+      ))}
+    </select>
+  </div>
+)}
+
+{isPlaceholder && (
+  <div>
+    <label className="mb-2 block text-sm font-medium">
+      Placeholder Label
+    </label>
+
+    <input
+      type="text"
+      value={form.placeholder_label}
+      onChange={(e) =>
+        handleChange("placeholder_label", e.target.value)
+      }
+      placeholder="Hiatus"
+      className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+    />
+  </div>
+)}
+          {!isPlaceholder && form.member === "Units" && (
   <div>
     <label className="mb-2 block text-sm font-medium">
       Related members
