@@ -8,14 +8,18 @@ const ADMIN_EMAIL = "monica.perezartavia@gmail.com";
 
 type PendingPhotocard = {
   id: number;
-  member: string;
+  member: string | null;
   era: string | null;
   type: string | null;
   pc_name: string | null;
   sort_order: number | null;
   image_path: string | null;
   created_at: string;
+
   related_members: string[] | null;
+
+  is_placeholder: boolean;
+  placeholder_label: string | null;
 };
 
 export default function AdminPendingPage() {
@@ -112,16 +116,20 @@ export default function AdminPendingPage() {
         .from("poca-images")
         .getPublicUrl(row.image_path).data.publicUrl;
 
-      const { error: insertError } = await supabase.from("photocards").insert({
-        member: row.member,
-        era: row.era,
-        type: row.type,
-        pc_name: row.pc_name,
-        sort_order: row.sort_order,
-        image_path: row.image_path,
-        image_url: imageUrl,
-        related_members: row.related_members,
-      });
+     const { error: insertError } = await supabase
+  .from("photocards")
+  .insert({
+    member: row.member,
+    era: row.era,
+    type: row.type,
+    pc_name: row.pc_name,
+    sort_order: row.sort_order,
+    image_path: row.image_path,
+    related_members: row.related_members,
+
+    is_placeholder: row.is_placeholder,
+    placeholder_label: row.placeholder_label,
+  });
 
       if (insertError) {
         throw new Error(`Approve insert failed: ${insertError.message}`);
@@ -195,8 +203,9 @@ export default function AdminPendingPage() {
           pc_name: row.pc_name,
           sort_order: row.sort_order,
           image_path: row.image_path,
-          image_url: imageUrl,
           related_members: row.related_members,
+          is_placeholder: row.is_placeholder,
+          placeholder_label: row.placeholder_label,
         });
 
         if (insertError) {
@@ -350,7 +359,18 @@ export default function AdminPendingPage() {
                         lineHeight: 1.5,
                       }}
                     >
-                      <p><strong>Member:</strong> {row.member}</p>
+                      <p>
+                      <strong>Member:</strong>{" "}
+                      {row.is_placeholder
+                        ? "Placeholder"
+                        : row.member || "—"}
+                    </p>
+                    {row.is_placeholder && (
+                      <p>
+                        <strong>Label:</strong>{" "}
+                        {row.placeholder_label || "Placeholder"}
+                      </p>
+                    )}
                       <p><strong>Era:</strong> {row.era || "—"}</p>
                       <p><strong>Type:</strong> {row.type || "—"}</p>
                       <p><strong>PC name:</strong> {row.pc_name || "—"}</p>
