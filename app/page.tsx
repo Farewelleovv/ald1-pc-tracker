@@ -75,6 +75,8 @@ type Photocard = {
   image_path: string | null;
   pc_name: string | null;
   related_members?: string[]
+  is_placeholder: boolean;
+  placeholder_label?: string | null;
 };
 
 const STATUS_ORDER: (Status | null)[] = [null, "prio", "otw", "owned"];
@@ -322,6 +324,11 @@ export default function Home() {
   };
 
   const setStatus = async (pcId: number, next: Status | null) => {
+    const pc = pcs.find((p) => p.id === pcId);
+
+if (pc?.is_placeholder) {
+  return;
+}
     if (!userId) {
       router.push("/login");
       return;
@@ -368,8 +375,14 @@ export default function Home() {
   };
 
   const handleCardTap = (pcId: number) => {
-    const now = Date.now();
-    const last = lastTapRef.current[pcId] || 0;
+  const pc = pcs.find((p) => p.id === pcId);
+
+  if (pc?.is_placeholder) {
+    return;
+  }
+
+  const now = Date.now();
+  const last = lastTapRef.current[pcId] || 0;
 
     if (now - last < 300) {
       const t = singleTapTimerRef.current[pcId];
@@ -401,12 +414,19 @@ export default function Home() {
       setMenuDirection("down");
     }
   }
+const pc = pcs.find((p) => p.id === pcId);
 
+if (pc?.is_placeholder) {
+  return;
+}
   setStatusMenuFor((cur) => (cur === pcId ? null : pcId));
   lastTapRef.current[pcId] = 0;
 
 }, 300);
+
   };
+  
+  
 
   const resetFilters = () => {
     setSelectedMembers([]);
@@ -611,6 +631,7 @@ if (
     if (count < 300) return "grid-cols-16 md:grid-cols-18";
     return "grid-cols-20 md:grid-cols-24";
   })();
+  
 
   const activeFiltersLabel = (() => {
     const parts: string[] = [];
@@ -838,7 +859,7 @@ if (
           >
             <option value="All">All eras</option>
             <option value="Euphoria">Euphoria</option>
-            <option value="b2p">Boys Planet</option>
+            <option value="Boys Planet">b2p</option>
             <option value="Other">Other</option>
           </select>
 
@@ -1002,34 +1023,47 @@ if (
                 : "grid-cols-4 md:grid-cols-8 gap-2",
             ].join(" ")}
           >
-            {visiblePCs.map((pc) => {
-              const status = pcStatus[pc.id];
-              const showMobileName = showNameFor === pc.id;
+{visiblePCs.map((pc) => {
+  const status = pcStatus[pc.id];
+  const showMobileName = showNameFor === pc.id;
 
-              const fullUrl = pc.image_path
-  ? STORAGE_BASE + pc.image_path
-  : null;
+  console.log(
+    "PC:",
+    pc.id,
+    pc.pc_name,
+    "is_placeholder:",
+    pc.is_placeholder
+  );
 
-const thumbUrl = pc.image_path
-  ? STORAGE_BASE + getThumbnail(pc.image_path)
-  : null;
+  const fullUrl = pc.image_path
+    ? STORAGE_BASE + pc.image_path
+    : null;
 
+  const thumbUrl = pc.image_path
+    ? STORAGE_BASE + getThumbnail(pc.image_path)
+    : null;
 
-              return (
+  return (
                 <div key={pc.id} id={`pc-${pc.id}`} className="relative">
                   <button
                     className="group relative aspect-[2.8/4] rounded-lg bg-[#EFE6DA] overflow-hidden print:rounded-md w-full"
                     onClick={() => handleCardTap(pc.id)}
                   >
                     {fullUrl ? (
-                      <LazyImage
-  src={thumbUrl}
-  fallback={fullUrl}
-  alt={pc.pc_name ?? pc.member}
-/>
+  <>
+    {pc.is_placeholder && (
+      <div className="absolute top-1 left-1 z-50 bg-red-500 text-white text-[10px] px-1 rounded">
+        Not a photocard
+      </div>
+    )}
 
-
-                    ) : (
+    <LazyImage
+      src={thumbUrl}
+      fallback={fullUrl}
+      alt={pc.pc_name ?? pc.member}
+    />
+  </>
+) : (
                       <div className="flex h-full items-center justify-center text-xs opacity-60">
                         {pc.member}
                       </div>
@@ -1071,8 +1105,7 @@ const thumbUrl = pc.image_path
                     )}
                   </button>
 
-                  {statusMenuFor === pc.id && (
-                    <div
+                    {statusMenuFor === pc.id && !pc.is_placeholder && (                    <div
                       ref={statusMenuRef}
                       className={`absolute left-1/2 -translate-x-1/2 w-44 rounded-xl bg-[#EFE6DA] shadow-lg z-50 p-2 print:hidden ${
                       menuDirection === "up"
