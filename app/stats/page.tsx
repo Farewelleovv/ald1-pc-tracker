@@ -107,7 +107,10 @@ export default function StatsPage() {
     owned: filtered.filter((pc) => pcStatus[pc.id] === "owned").length,
     otw: filtered.filter((pc) => pcStatus[pc.id] === "otw").length,
     prio: filtered.filter((pc) => pcStatus[pc.id] === "prio").length,
-    missing: filtered.filter((pc) => !pcStatus[pc.id]).length,
+    missing: filtered.filter((pc) => {
+  const status = pcStatus[pc.id];
+  return !status || status === "prio";
+}).length,
   };
 
   const completion =
