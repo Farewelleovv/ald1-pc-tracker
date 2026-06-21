@@ -216,6 +216,7 @@ export default function StatsPage() {
           >
             <option value="All">All eras</option>
             <option value="Euphoria">Euphoria</option>
+            <option value="No School Tomorrow">No School Tomorrow</option>
             <option value="Boys Planet"></option>
             <option value="Other">Other</option>
           </select>
