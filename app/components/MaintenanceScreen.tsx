@@ -6,8 +6,10 @@ export default function MaintenanceScreen() {
           🚧 Under Maintenance
         </h1>
         <p className="text-sm text-gray-600">
-          Haiii, I'm updating the tracker atm. Please check back soon 💛
-        </p>
+          Haiii, I'm updating the tracker atm. Please check back soon 💛</p>
+        <p className="text-sm text-gray-500 mt-4">
+            Contact me on Twitter @ald1pctracker or @Farewelleovv if you have any questions or just wanna say hi!
+          </p>
       </div>
     </main>
   );
