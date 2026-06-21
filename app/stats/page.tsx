@@ -11,6 +11,7 @@ type Photocard = {
   member: string;
   era: string | null;
   type: string | null;
+  is_placeholder: boolean;
 };
 
 const MEMBERS = [
@@ -87,6 +88,7 @@ export default function StatsPage() {
 
   // FILTERED PCS
   const filtered = pcs.filter((pc) => {
+    if (pc.is_placeholder) return false;
     if (selectedMembers.length > 0 && !selectedMembers.includes(pc.member))
       return false;
 
@@ -113,6 +115,7 @@ export default function StatsPage() {
       ? 0
       : Math.round(((stats.owned + stats.otw) / stats.total) * 100);
 
+  // MEMBER STATS (NOT affected by filters)
   const memberStats = MEMBERS.map((member) => {
     const memberPCs = pcs.filter((pc) => pc.member === member);
 
@@ -210,7 +213,7 @@ export default function StatsPage() {
           >
             <option value="All">All eras</option>
             <option value="Euphoria">Euphoria</option>
-            <option value="b2p">Boys 2 Planet</option>
+            <option value="Boys Planet"></option>
             <option value="Other">Other</option>
           </select>
 
