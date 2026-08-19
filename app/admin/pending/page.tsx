@@ -152,9 +152,7 @@ export default function AdminPendingPage() {
 
       setRows((prev) => prev.filter((item) => item.id !== row.id));
 
-      setActionMessage(
-        `Approved: ${row.pc_name || row.image_path}`
-      );
+      setActionMessage(`Approved: ${row.pc_name || row.image_path}`);
     } catch (error) {
       const message =
         error instanceof Error
@@ -184,9 +182,7 @@ export default function AdminPendingPage() {
 
       setRows((prev) => prev.filter((item) => item.id !== row.id));
 
-      setActionMessage(
-        `Rejected: ${row.pc_name || row.image_path}`
-      );
+      setActionMessage(`Rejected: ${row.pc_name || row.image_path}`);
     } catch (error) {
       const message =
         error instanceof Error
@@ -230,9 +226,7 @@ export default function AdminPendingPage() {
           });
 
         if (insertError) {
-          throw new Error(
-            `Approve failed: ${insertError.message}`
-          );
+          throw new Error(`Approve failed: ${insertError.message}`);
         }
 
         const { error: deleteError } = await supabase
@@ -241,17 +235,13 @@ export default function AdminPendingPage() {
           .eq("id", row.id);
 
         if (deleteError) {
-          throw new Error(
-            `Delete failed: ${deleteError.message}`
-          );
+          throw new Error(`Delete failed: ${deleteError.message}`);
         }
       }
 
       setRows([]);
 
-      setActionMessage(
-        "All pending photocards approved."
-      );
+      setActionMessage("All pending photocards approved.");
     } catch (error) {
       const message =
         error instanceof Error
@@ -468,6 +458,11 @@ export default function AdminPendingPage() {
                         <p>
                           <strong>PC name:</strong>{" "}
                           {row.pc_name || "—"}
+                        </p>
+
+                        <p>
+                          <strong>Sort order:</strong>{" "}
+                          {row.sort_order ?? "—"}
                         </p>
 
                         <p
