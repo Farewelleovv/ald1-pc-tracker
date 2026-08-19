@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { slugify } from "@/lib/slugify";
 
-const ADMIN_EMAIL = "monica.perezartavia@gmail.com";
+const ADMIN_EMAILS = ["monica.perezartavia@gmail.com", "hikari19isa@gmail.com"];
 
 const MEMBERS = [
   "Leo",
@@ -85,7 +85,9 @@ export default function AdminUploadPage() {
       }
 
       const email = user.email?.toLowerCase() || "";
-      const allowed = email === ADMIN_EMAIL.toLowerCase();
+const allowed = ADMIN_EMAILS.some(
+  (adminEmail) => adminEmail.toLowerCase() === email
+);
 
       setIsAdmin(allowed);
       setAuthLoading(false);
