@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-const ADMIN_EMAIL = "monica.perezartavia@gmail.com";
+const ADMIN_EMAILS = ["monica.perezartavia@gmail.com", "hikari19isa@gmail.com"];
 
 type PendingPhotocard = {
   id: number;
