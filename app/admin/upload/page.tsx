@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { slugify } from "@/lib/slugify";
 
-const ADMIN_EMAILS = ["monica.perezartavia@gmail.com", "hikari19isa@gmail.com"];
+const ADMIN_EMAILS = [
+  "monica.perezartavia@gmail.com",
+  "hikari19isa@gmail.com",
+];
 
 const MEMBERS = [
   "Leo",
@@ -35,6 +38,7 @@ export default function AdminUploadPage() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [file, setFile] = useState<File | null>(null);
+
   const [form, setForm] = useState<UploadState>({
     member: "",
     era: "",
@@ -58,7 +62,7 @@ export default function AdminUploadPage() {
     const safeEra = slugify(form.era || "unknown");
     const safeType = slugify(form.type || "unknown");
     const safePcName = slugify(form.pc_name || "pc");
-    const random = "abc12"; 
+    const random = "abc12";
 
     return `${safeMember}/${safeEra}/${safeType}/${safePcName}-${random}.${ext}`;
   }, [file, form]);
@@ -85,9 +89,10 @@ export default function AdminUploadPage() {
       }
 
       const email = user.email?.toLowerCase() || "";
-const allowed = ADMIN_EMAILS.some(
-  (adminEmail) => adminEmail.toLowerCase() === email
-);
+
+      const allowed = ADMIN_EMAILS.some(
+        (adminEmail) => adminEmail.toLowerCase() === email
+      );
 
       setIsAdmin(allowed);
       setAuthLoading(false);
@@ -110,6 +115,7 @@ const allowed = ADMIN_EMAILS.some(
     setFile(null);
     setRelatedMembers([]);
     setIsPlaceholder(false);
+
     setForm({
       member: "",
       era: "",
@@ -120,7 +126,9 @@ const allowed = ADMIN_EMAILS.some(
     });
   };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (
+    e: React.FormEvent<HTMLFormElement>
+  ) => {
     e.preventDefault();
 
     setMessage("");
@@ -137,22 +145,25 @@ const allowed = ADMIN_EMAILS.some(
     }
 
     if (!isPlaceholder && !form.member.trim()) {
-  setErrorMessage("Member is required.");
-  return;
-}
+      setErrorMessage("Member is required.");
+      return;
+    }
 
     setSubmitting(true);
 
     try {
       const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+
       const safeMember = slugify(
-  isPlaceholder
-    ? "placeholder"
-    : form.member || "unknown"
-);
+        isPlaceholder
+          ? "placeholder"
+          : form.member || "unknown"
+      );
+
       const safeEra = slugify(form.era || "unknown");
       const safeType = slugify(form.type || "unknown");
       const safePcName = slugify(form.pc_name || "pc");
+
       const random = crypto.randomUUID().slice(0, 5);
 
       const fileName = `${safePcName}-${random}.${ext}`;
@@ -166,221 +177,339 @@ const allowed = ADMIN_EMAILS.some(
         });
 
       if (uploadError) {
-        throw new Error(`Storage upload failed: ${uploadError.message}`);
+        throw new Error(
+          `Storage upload failed: ${uploadError.message}`
+        );
       }
 
       const { error: insertError } = await supabase
-  .from("pending_photocards")
-  .insert({
-    member: isPlaceholder ? "placeholder" : form.member,
-    is_placeholder: isPlaceholder,
+        .from("pending_photocards")
+        .insert({
+          member: isPlaceholder ? "placeholder" : form.member,
 
-placeholder_label: isPlaceholder
-  ? form.placeholder_label.trim() || "Placeholder"
-  : null,
-    era: form.era.trim() || null,
-    type: form.type.trim() || null,
-    pc_name: form.pc_name.trim() || null,
-    sort_order: form.sort_order.trim() ? Number(form.sort_order) : null,
-    image_path: filePath,
-    related_members:
-  form.member === "Units"
-    ? relatedMembers
-    : null,
-  });
+          is_placeholder: isPlaceholder,
+
+          placeholder_label: isPlaceholder
+            ? form.placeholder_label.trim() || "Placeholder"
+            : null,
+
+          era: form.era.trim() || null,
+          type: form.type.trim() || null,
+          pc_name: form.pc_name.trim() || null,
+
+          sort_order: form.sort_order.trim()
+            ? Number(form.sort_order)
+            : null,
+
+          image_path: filePath,
+
+          related_members:
+            form.member === "Units"
+              ? relatedMembers
+              : null,
+        });
 
       if (insertError) {
-        throw new Error(`Pending insert failed: ${insertError.message}`);
+        throw new Error(
+          `Pending insert failed: ${insertError.message}`
+        );
       }
 
       setMessage(`Uploaded to pending review: ${filePath}`);
+
       resetForm();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Something went wrong.";
+        error instanceof Error
+          ? error.message
+          : "Something went wrong.";
+
       setErrorMessage(message);
     } finally {
       setSubmitting(false);
     }
   };
 
+  // --------------------------------
+  // AUTH LOADING
+  // --------------------------------
+
   if (authLoading) {
     return (
-      <main className="min-h-screen bg-[#F7F2EB] px-6 py-10">
-        <div className="mx-auto max-w-2xl rounded-2xl bg-[#EFE6DA] p-6">
+      <main className="min-h-screen bg-[#F7F2EB] px-6 py-10 text-gray-900">
+        <div className="mx-auto max-w-2xl rounded-2xl bg-[#EFE6DA] p-6 text-gray-900">
           <p>Checking admin access...</p>
         </div>
       </main>
     );
   }
 
+  // --------------------------------
+  // ACCESS DENIED
+  // --------------------------------
+
   if (!isAdmin) {
     return (
-      <main className="min-h-screen bg-[#F7F2EB] px-6 py-10">
-        <div className="mx-auto max-w-2xl rounded-2xl bg-[#EFE6DA] p-6">
-          <h1 className="text-xl font-semibold">Access denied</h1>
+      <main className="min-h-screen bg-[#F7F2EB] px-6 py-10 text-gray-900">
+        <div className="mx-auto max-w-2xl rounded-2xl bg-[#EFE6DA] p-6 text-gray-900">
+          <h1 className="text-xl font-semibold">
+            Access denied
+          </h1>
+
           <p className="mt-2 text-sm text-gray-700">
             This page is only available to the admin account.
           </p>
+
           {errorMessage ? (
-            <p className="mt-4 text-sm text-red-600">{errorMessage}</p>
+            <p className="mt-4 text-sm text-red-600">
+              {errorMessage}
+            </p>
           ) : null}
         </div>
       </main>
     );
   }
 
+  // --------------------------------
+  // UPLOAD PAGE
+  // --------------------------------
+
   return (
-    <main className="min-h-screen bg-[#F7F2EB] px-6 py-10">
-      <div className="mx-auto max-w-2xl rounded-2xl bg-[#EFE6DA] p-6 shadow-sm">
-        <h1 className="text-2xl font-semibold">Admin photocard upload</h1>
+    <main className="min-h-screen bg-[#F7F2EB] px-6 py-10 text-gray-900">
+      <div className="mx-auto max-w-2xl rounded-2xl bg-[#EFE6DA] p-6 text-gray-900 shadow-sm">
+
+        <h1 className="text-2xl font-semibold">
+          Admin photocard upload
+        </h1>
+
         <p className="mt-2 text-sm text-gray-700">
-          New uploads go into <span className="font-medium">pending_photocards</span>,
-          not the live table.
+          New uploads go into{" "}
+          <span className="font-medium">
+            pending_photocards
+          </span>
+          , not the live table.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+        <form
+          onSubmit={handleSubmit}
+          className="mt-6 space-y-5"
+        >
+
+          {/* IMAGE */}
+
           <div>
-            <label className="mb-2 block text-sm font-medium">Image file</label>
+            <label className="mb-2 block text-sm font-medium text-gray-900">
+              Image file
+            </label>
+
             <input
               type="file"
               accept="image/*"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+              onChange={(e) =>
+                setFile(e.target.files?.[0] ?? null)
+              }
+              className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
             />
           </div>
 
+          {/* PLACEHOLDER */}
+
           <div>
-  <label className="flex items-center gap-2 text-sm font-medium">
-    <input
-      type="checkbox"
-      checked={isPlaceholder}
-      onChange={(e) => setIsPlaceholder(e.target.checked)}
-    />
-    Placeholder Card
-  </label>
-</div>
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-900">
+              <input
+                type="checkbox"
+                checked={isPlaceholder}
+                onChange={(e) =>
+                  setIsPlaceholder(e.target.checked)
+                }
+              />
+
+              Placeholder Card
+            </label>
+          </div>
+
+          {/* MEMBER */}
 
           {!isPlaceholder && (
-  <div>
-    <label className="mb-2 block text-sm font-medium">
-      Member *
-    </label>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-900">
+                Member *
+              </label>
 
-    <select
-      value={form.member}
-      onChange={(e) => handleChange("member", e.target.value)}
-      className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-      required={!isPlaceholder}
-    >
-      <option value="">Select member</option>
+              <select
+                value={form.member}
+                onChange={(e) =>
+                  handleChange("member", e.target.value)
+                }
+                className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+                required={!isPlaceholder}
+              >
+                <option value="">
+                  Select member
+                </option>
 
-      {MEMBERS.map((member) => (
-        <option key={member} value={member}>
-          {member}
-        </option>
-      ))}
-    </select>
-  </div>
-)}
+                {MEMBERS.map((member) => (
+                  <option
+                    key={member}
+                    value={member}
+                  >
+                    {member}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
-{isPlaceholder && (
-  <div>
-    <label className="mb-2 block text-sm font-medium">
-      Placeholder Label
-    </label>
+          {/* PLACEHOLDER LABEL */}
 
-    <input
-      type="text"
-      value={form.placeholder_label}
-      onChange={(e) =>
-        handleChange("placeholder_label", e.target.value)
-      }
-      placeholder="Hiatus"
-      className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-    />
-  </div>
-)}
-          {!isPlaceholder && form.member === "Units" && (
-  <div>
-    <label className="mb-2 block text-sm font-medium">
-      Related members
-    </label>
+          {isPlaceholder && (
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-900">
+                Placeholder Label
+              </label>
 
-    <div className="flex flex-wrap gap-2">
-      {MEMBERS.filter((m) => m !== "Units").map((m) => (
-        <button
-          key={m}
-          type="button"
-          onClick={() =>
-            setRelatedMembers((prev) =>
-              prev.includes(m)
-                ? prev.filter((x) => x !== m)
-                : [...prev, m]
-            )
-          }
-          className={`rounded-full px-3 py-1 text-sm ${
-            relatedMembers.includes(m)
-              ? "bg-[#C8B6A6] text-white"
-              : "bg-white border border-gray-300"
-          }`}
-        >
-          {m}
-        </button>
-      ))}
-    </div>
-  </div>
-)}
+              <input
+                type="text"
+                value={form.placeholder_label}
+                onChange={(e) =>
+                  handleChange(
+                    "placeholder_label",
+                    e.target.value
+                  )
+                }
+                placeholder="Hiatus"
+                className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400"
+              />
+            </div>
+          )}
+
+          {/* RELATED MEMBERS */}
+
+          {!isPlaceholder &&
+            form.member === "Units" && (
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-900">
+                  Related members
+                </label>
+
+                <div className="flex flex-wrap gap-2">
+                  {MEMBERS.filter(
+                    (m) => m !== "Units"
+                  ).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() =>
+                        setRelatedMembers((prev) =>
+                          prev.includes(m)
+                            ? prev.filter(
+                                (x) => x !== m
+                              )
+                            : [...prev, m]
+                        )
+                      }
+                      className={`rounded-full px-3 py-1 text-sm ${
+                        relatedMembers.includes(m)
+                          ? "bg-[#C8B6A6] text-white"
+                          : "border border-gray-300 bg-white text-gray-900"
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          {/* ERA */}
 
           <div>
-            <label className="mb-2 block text-sm font-medium">Era</label>
+            <label className="mb-2 block text-sm font-medium text-gray-900">
+              Era
+            </label>
+
             <input
               type="text"
               value={form.era}
-              onChange={(e) => handleChange("era", e.target.value)}
+              onChange={(e) =>
+                handleChange("era", e.target.value)
+              }
               placeholder="e.g. Fansign"
-              className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+              className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400"
             />
           </div>
 
+          {/* TYPE */}
+
           <div>
-            <label className="mb-2 block text-sm font-medium">Type</label>
+            <label className="mb-2 block text-sm font-medium text-gray-900">
+              Type
+            </label>
+
             <input
               type="text"
               value={form.type}
-              onChange={(e) => handleChange("type", e.target.value)}
+              onChange={(e) =>
+                handleChange("type", e.target.value)
+              }
               placeholder="e.g. Lucky Draw"
-              className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+              className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400"
             />
           </div>
 
+          {/* PC NAME */}
+
           <div>
-            <label className="mb-2 block text-sm font-medium">PC name</label>
+            <label className="mb-2 block text-sm font-medium text-gray-900">
+              PC name
+            </label>
+
             <input
               type="text"
               value={form.pc_name}
-              onChange={(e) => handleChange("pc_name", e.target.value)}
+              onChange={(e) =>
+                handleChange("pc_name", e.target.value)
+              }
               placeholder="e.g. LD 1"
-              className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+              className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400"
             />
           </div>
-          <div>
-  <label className="mb-2 block text-sm font-medium">Sort order</label>
-  <input
-    type="number"
-    value={form.sort_order}
-    onChange={(e) => handleChange("sort_order", e.target.value)}
-    placeholder="e.g. 120"
-    className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-  />
-</div>
 
-          <div className="rounded-xl bg-white/70 p-4 text-sm">
-            <p className="font-medium">Preview path</p>
+          {/* SORT ORDER */}
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-900">
+              Sort order
+            </label>
+
+            <input
+              type="number"
+              value={form.sort_order}
+              onChange={(e) =>
+                handleChange(
+                  "sort_order",
+                  e.target.value
+                )
+              }
+              placeholder="e.g. 120"
+              className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400"
+            />
+          </div>
+
+          {/* PREVIEW */}
+
+          <div className="rounded-xl bg-white/70 p-4 text-sm text-gray-900">
+            <p className="font-medium">
+              Preview path
+            </p>
+
             <p className="mt-1 break-all text-gray-700">
-              {previewPath || "Select a file and member to preview the path."}
+              {previewPath ||
+                "Select a file and member to preview the path."}
             </p>
           </div>
+
+          {/* SUCCESS */}
 
           {message ? (
             <div className="rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">
@@ -388,18 +517,24 @@ placeholder_label: isPlaceholder
             </div>
           ) : null}
 
+          {/* ERROR */}
+
           {errorMessage ? (
             <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
               {errorMessage}
             </div>
           ) : null}
 
+          {/* SUBMIT */}
+
           <button
             type="submit"
             disabled={submitting}
             className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
-            {submitting ? "Uploading..." : "Upload to pending"}
+            {submitting
+              ? "Uploading..."
+              : "Upload to pending"}
           </button>
         </form>
       </div>
