@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-const ADMIN_EMAILS = ["monica.perezartavia@gmail.com", "hikari19isa@gmail.com"];
+const ADMIN_EMAILS = [
+  "monica.perezartavia@gmail.com",
+  "hikari19isa@gmail.com",
+];
 
 type PendingPhotocard = {
   id: number;
@@ -58,8 +61,9 @@ export default function AdminPendingPage() {
       }
 
       const email = user.email?.toLowerCase() || "";
+
       const allowed = ADMIN_EMAILS.some(
-      (adminEmail) => adminEmail.toLowerCase() === email
+        (adminEmail) => adminEmail.toLowerCase() === email
       );
 
       setIsAdmin(allowed);
@@ -118,20 +122,20 @@ export default function AdminPendingPage() {
         .from("poca-images")
         .getPublicUrl(row.image_path).data.publicUrl;
 
-     const { error: insertError } = await supabase
-  .from("photocards")
-  .insert({
-    member: row.member,
-    era: row.era,
-    type: row.type,
-    pc_name: row.pc_name,
-    sort_order: row.sort_order,
-    image_path: row.image_path,
-    related_members: row.related_members,
+      const { error: insertError } = await supabase
+        .from("photocards")
+        .insert({
+          member: row.member,
+          era: row.era,
+          type: row.type,
+          pc_name: row.pc_name,
+          sort_order: row.sort_order,
+          image_path: row.image_path,
+          related_members: row.related_members,
 
-    is_placeholder: row.is_placeholder,
-    placeholder_label: row.placeholder_label,
-  });
+          is_placeholder: row.is_placeholder,
+          placeholder_label: row.placeholder_label,
+        });
 
       if (insertError) {
         throw new Error(`Approve insert failed: ${insertError.message}`);
@@ -147,10 +151,16 @@ export default function AdminPendingPage() {
       }
 
       setRows((prev) => prev.filter((item) => item.id !== row.id));
-      setActionMessage(`Approved: ${row.pc_name || row.image_path}`);
+
+      setActionMessage(
+        `Approved: ${row.pc_name || row.image_path}`
+      );
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Something went wrong.";
+        error instanceof Error
+          ? error.message
+          : "Something went wrong.";
+
       setErrorMessage(message);
     } finally {
       setProcessingId(null);
@@ -173,10 +183,16 @@ export default function AdminPendingPage() {
       }
 
       setRows((prev) => prev.filter((item) => item.id !== row.id));
-      setActionMessage(`Rejected: ${row.pc_name || row.image_path}`);
+
+      setActionMessage(
+        `Rejected: ${row.pc_name || row.image_path}`
+      );
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Something went wrong.";
+        error instanceof Error
+          ? error.message
+          : "Something went wrong.";
+
       setErrorMessage(message);
     } finally {
       setProcessingId(null);
@@ -198,20 +214,25 @@ export default function AdminPendingPage() {
           .from("poca-images")
           .getPublicUrl(row.image_path).data.publicUrl;
 
-        const { error: insertError } = await supabase.from("photocards").insert({
-          member: row.member,
-          era: row.era,
-          type: row.type,
-          pc_name: row.pc_name,
-          sort_order: row.sort_order,
-          image_path: row.image_path,
-          related_members: row.related_members,
-          is_placeholder: row.is_placeholder,
-          placeholder_label: row.placeholder_label,
-        });
+        const { error: insertError } = await supabase
+          .from("photocards")
+          .insert({
+            member: row.member,
+            era: row.era,
+            type: row.type,
+            pc_name: row.pc_name,
+            sort_order: row.sort_order,
+            image_path: row.image_path,
+            related_members: row.related_members,
+
+            is_placeholder: row.is_placeholder,
+            placeholder_label: row.placeholder_label,
+          });
 
         if (insertError) {
-          throw new Error(`Approve failed: ${insertError.message}`);
+          throw new Error(
+            `Approve failed: ${insertError.message}`
+          );
         }
 
         const { error: deleteError } = await supabase
@@ -220,36 +241,55 @@ export default function AdminPendingPage() {
           .eq("id", row.id);
 
         if (deleteError) {
-          throw new Error(`Delete failed: ${deleteError.message}`);
+          throw new Error(
+            `Delete failed: ${deleteError.message}`
+          );
         }
       }
 
       setRows([]);
-      setActionMessage("All pending photocards approved.");
+
+      setActionMessage(
+        "All pending photocards approved."
+      );
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Something went wrong.";
+        error instanceof Error
+          ? error.message
+          : "Something went wrong.";
+
       setErrorMessage(message);
     } finally {
       setProcessingAll(false);
     }
   };
 
+  // -----------------------------
+  // AUTH LOADING
+  // -----------------------------
+
   if (authLoading) {
     return (
-      <main className="min-h-screen bg-[#F7F2EB] px-6 py-10">
-        <div className="mx-auto max-w-6xl rounded-2xl bg-[#EFE6DA] p-6">
+      <main className="min-h-screen bg-[#F7F2EB] px-6 py-10 text-gray-900">
+        <div className="mx-auto max-w-6xl rounded-2xl bg-[#EFE6DA] p-6 text-gray-900">
           <p>Checking admin access...</p>
         </div>
       </main>
     );
   }
 
+  // -----------------------------
+  // ACCESS DENIED
+  // -----------------------------
+
   if (!isAdmin) {
     return (
-      <main className="min-h-screen bg-[#F7F2EB] px-6 py-10">
-        <div className="mx-auto max-w-6xl rounded-2xl bg-[#EFE6DA] p-6">
-          <h1 className="text-xl font-semibold">Access denied</h1>
+      <main className="min-h-screen bg-[#F7F2EB] px-6 py-10 text-gray-900">
+        <div className="mx-auto max-w-6xl rounded-2xl bg-[#EFE6DA] p-6 text-gray-900">
+          <h1 className="text-xl font-semibold">
+            Access denied
+          </h1>
+
           <p className="mt-2 text-sm text-gray-700">
             This page is only available to the admin account.
           </p>
@@ -258,172 +298,244 @@ export default function AdminPendingPage() {
     );
   }
 
+  // -----------------------------
+  // PENDING PAGE
+  // -----------------------------
+
   return (
-  <main className="min-h-screen bg-[#F7F2EB] px-6 py-10">
-    <div className="mx-auto max-w-6xl">
-      <div className="rounded-2xl bg-[#EFE6DA] p-6 shadow-sm">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">Pending photocards</h1>
-            <p className="mt-2 text-sm text-gray-700">
-              Review uploads before approving them into the live table.
+    <main className="min-h-screen bg-[#F7F2EB] px-6 py-10 text-gray-900">
+      <div className="mx-auto max-w-6xl">
+        <div className="rounded-2xl bg-[#EFE6DA] p-6 text-gray-900 shadow-sm">
+
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-900">
+                Pending photocards
+              </h1>
+
+              <p className="mt-2 text-sm text-gray-700">
+                Review uploads before approving them into the live table.
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+
+              <button
+                onClick={fetchPending}
+                className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-900"
+              >
+                Refresh
+              </button>
+
+              <button
+                onClick={handleApproveAll}
+                disabled={
+                  processingAll ||
+                  rows.length === 0
+                }
+                className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {processingAll
+                  ? "Approving..."
+                  : "Approve All"}
+              </button>
+
+            </div>
+          </div>
+
+          {loading ? (
+            <p className="mt-6 text-gray-900">
+              Loading pending photocards...
             </p>
-          </div>
+          ) : rows.length === 0 ? (
+            <p className="mt-6 text-sm text-gray-700">
+              No pending photocards yet.
+            </p>
+          ) : (
 
-          <div className="flex gap-2">
-            <button
-              onClick={fetchPending}
-              className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium"
-            >
-              Refresh
-            </button>
+            <div className="mt-6 grid grid-cols-1 justify-items-center gap-6 sm:grid-cols-2 lg:grid-cols-3">
 
-            <button
-              onClick={handleApproveAll}
-              disabled={processingAll || rows.length === 0}
-              className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {processingAll ? "Approving..." : "Approve All"}
-            </button>
-          </div>
-        </div>
+              {rows.map((row) => {
+                const imageUrl =
+                  row.image_path
+                    ? supabase.storage
+                        .from("poca-images")
+                        .getPublicUrl(row.image_path)
+                        .data.publicUrl
+                    : "";
 
-        {loading ? (
-          <p className="mt-6">Loading pending photocards...</p>
-        ) : rows.length === 0 ? (
-          <p className="mt-6 text-sm text-gray-700">
-            No pending photocards yet.
-          </p>
-        ) : (
-          <div className="mt-6 grid grid-cols-1 gap-6 justify-items-center sm:grid-cols-2 lg:grid-cols-3">
-            {rows.map((row) => {
-              const imageUrl = row.image_path
-                ? supabase.storage
-                    .from("poca-images")
-                    .getPublicUrl(row.image_path).data.publicUrl
-                : "";
+                const isProcessing =
+                  processingId === row.id;
 
-              const isProcessing = processingId === row.id;
-
-              return (
-                <div
-                  key={row.id}
-                  style={{
-                    width: "260px",
-                    background: "white",
-                    borderRadius: "16px",
-                    padding: "16px",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-                  }}
-                >
-                  <div style={{ width: "220px", margin: "0 auto" }}>
+                return (
+                  <div
+                    key={row.id}
+                    style={{
+                      width: "260px",
+                      background: "white",
+                      color: "#111827",
+                      borderRadius: "16px",
+                      padding: "16px",
+                      boxShadow:
+                        "0 1px 3px rgba(0,0,0,0.08)",
+                    }}
+                  >
                     <div
                       style={{
                         width: "220px",
-                        height: "293px",
-                        overflow: "hidden",
-                        borderRadius: "12px",
-                        background: "#f5efe7",
+                        margin: "0 auto",
                       }}
                     >
-                      {imageUrl ? (
-                        <img
-                          src={imageUrl}
-                          alt={row.pc_name || "Pending photocard"}
-                          style={{
-                            display: "block",
-                            width: "220px",
-                            height: "293px",
-                            objectFit: "cover",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            width: "220px",
-                            height: "293px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "#6b7280",
-                            fontSize: "14px",
-                          }}
-                        >
-                          No image
-                        </div>
-                      )}
-                    </div>
 
-                    <div
-                      style={{
-                        marginTop: "16px",
-                        fontSize: "14px",
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      <p>
-                      <strong>Member:</strong>{" "}
-                      {row.is_placeholder
-                        ? "Placeholder"
-                        : row.member || "—"}
-                    </p>
-                    {row.is_placeholder && (
-                      <p>
-                        <strong>Label:</strong>{" "}
-                        {row.placeholder_label || "Placeholder"}
-                      </p>
-                    )}
-                      <p><strong>Era:</strong> {row.era || "—"}</p>
-                      <p><strong>Type:</strong> {row.type || "—"}</p>
-                      <p><strong>PC name:</strong> {row.pc_name || "—"}</p>
+                      {/* IMAGE */}
 
-                      <p
+                      <div
                         style={{
-                          wordBreak: "break-word",
-                          fontSize: "12px",
-                          color: "#4b5563",
-                          marginTop: "8px",
+                          width: "220px",
+                          height: "293px",
+                          overflow: "hidden",
+                          borderRadius: "12px",
+                          background: "#f5efe7",
                         }}
                       >
-                        <strong>Path:</strong> {row.image_path || "—"}
-                      </p>
-                    </div>
+                        {imageUrl ? (
+                          <img
+                            src={imageUrl}
+                            alt={
+                              row.pc_name ||
+                              "Pending photocard"
+                            }
+                            style={{
+                              display: "block",
+                              width: "220px",
+                              height: "293px",
+                              objectFit: "cover",
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              width: "220px",
+                              height: "293px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent:
+                                "center",
+                              color: "#6b7280",
+                              fontSize: "14px",
+                            }}
+                          >
+                            No image
+                          </div>
+                        )}
+                      </div>
 
-                    <div className="mt-4 flex gap-2">
-                      <button
-                        onClick={() => handleApprove(row)}
-                        disabled={isProcessing}
-                        className="flex-1 rounded-xl bg-black px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-                      >
-                        {isProcessing ? "Working..." : "Approve"}
-                      </button>
+                      {/* DETAILS */}
 
-                      <button
-                        onClick={() => handleReject(row)}
-                        disabled={isProcessing}
-                        className="flex-1 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50"
+                      <div
+                        style={{
+                          marginTop: "16px",
+                          fontSize: "14px",
+                          lineHeight: 1.5,
+                          color: "#111827",
+                        }}
                       >
-                        {isProcessing ? "Working..." : "Reject"}
-                      </button>
+                        <p>
+                          <strong>Member:</strong>{" "}
+                          {row.is_placeholder
+                            ? "Placeholder"
+                            : row.member || "—"}
+                        </p>
+
+                        {row.is_placeholder && (
+                          <p>
+                            <strong>Label:</strong>{" "}
+                            {row.placeholder_label ||
+                              "Placeholder"}
+                          </p>
+                        )}
+
+                        <p>
+                          <strong>Era:</strong>{" "}
+                          {row.era || "—"}
+                        </p>
+
+                        <p>
+                          <strong>Type:</strong>{" "}
+                          {row.type || "—"}
+                        </p>
+
+                        <p>
+                          <strong>PC name:</strong>{" "}
+                          {row.pc_name || "—"}
+                        </p>
+
+                        <p
+                          style={{
+                            wordBreak: "break-word",
+                            fontSize: "12px",
+                            color: "#4b5563",
+                            marginTop: "8px",
+                          }}
+                        >
+                          <strong>Path:</strong>{" "}
+                          {row.image_path || "—"}
+                        </p>
+                      </div>
+
+                      {/* BUTTONS */}
+
+                      <div className="mt-4 flex gap-2">
+
+                        <button
+                          onClick={() =>
+                            handleApprove(row)
+                          }
+                          disabled={isProcessing}
+                          className="flex-1 rounded-xl bg-black px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                        >
+                          {isProcessing
+                            ? "Working..."
+                            : "Approve"}
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            handleReject(row)
+                          }
+                          disabled={isProcessing}
+                          className="flex-1 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 disabled:opacity-50"
+                        >
+                          {isProcessing
+                            ? "Working..."
+                            : "Reject"}
+                        </button>
+
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
 
-    {errorMessage ? (
-      <div className="fixed bottom-4 right-4 z-50 max-w-sm rounded-xl bg-red-100 px-4 py-3 text-sm text-red-800 shadow-lg">
-        {errorMessage}
-      </div>
-    ) : actionMessage ? (
-      <div className="fixed bottom-4 right-4 z-50 max-w-sm rounded-xl bg-green-100 px-4 py-3 text-sm text-green-800 shadow-lg">
-        {actionMessage}
-      </div>
-    ) : null}
-  </main>
-);
+      {/* ERROR TOAST */}
+
+      {errorMessage ? (
+        <div className="fixed bottom-4 right-4 z-50 max-w-sm rounded-xl bg-red-100 px-4 py-3 text-sm text-red-800 shadow-lg">
+          {errorMessage}
+        </div>
+      ) : actionMessage ? (
+
+        /* SUCCESS TOAST */
+
+        <div className="fixed bottom-4 right-4 z-50 max-w-sm rounded-xl bg-green-100 px-4 py-3 text-sm text-green-800 shadow-lg">
+          {actionMessage}
+        </div>
+
+      ) : null}
+    </main>
+  );
 }
