@@ -57,8 +57,10 @@ export default function AdminPendingPage() {
         return;
       }
 
-      const allowed =
-        (user.email?.toLowerCase() || "") === ADMIN_EMAIL.toLowerCase();
+      const email = user.email?.toLowerCase() || "";
+      const allowed = ADMIN_EMAILS.some(
+      (adminEmail) => adminEmail.toLowerCase() === email
+      );
 
       setIsAdmin(allowed);
       setAuthLoading(false);
